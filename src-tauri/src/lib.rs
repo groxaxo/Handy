@@ -228,6 +228,8 @@ pub fn run() {
             commands::models::has_any_models_available,
             commands::models::has_any_models_or_downloads,
             commands::models::get_recommended_first_model,
+            commands::models::add_remote_model,
+            commands::models::remove_remote_model,
             commands::audio::update_microphone_mode,
             commands::audio::get_microphone_mode,
             commands::audio::get_available_microphones,

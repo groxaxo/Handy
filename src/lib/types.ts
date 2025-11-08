@@ -64,6 +64,14 @@ export type ShortcutBinding = z.infer<typeof ShortcutBindingSchema>;
 export type ShortcutBindingsMap = z.infer<typeof ShortcutBindingsMapSchema>;
 export type Settings = z.infer<typeof SettingsSchema>;
 
+export const RemoteModelConfigSchema = z.object({
+  api_url: z.string(),
+  api_key: z.string().optional(),
+  model_name: z.string(),
+});
+
+export const EngineTypeSchema = z.enum(["Whisper", "Parakeet", "RemoteWhisper"]);
+
 export const ModelInfoSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -75,6 +83,10 @@ export const ModelInfoSchema = z.object({
   is_downloading: z.boolean(),
   partial_size: z.number(),
   is_directory: z.boolean(),
+  engine_type: EngineTypeSchema,
+  remote_config: RemoteModelConfigSchema.optional(),
 });
 
+export type RemoteModelConfig = z.infer<typeof RemoteModelConfigSchema>;
+export type EngineType = z.infer<typeof EngineTypeSchema>;
 export type ModelInfo = z.infer<typeof ModelInfoSchema>;

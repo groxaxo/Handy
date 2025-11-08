@@ -52,7 +52,9 @@ pub async fn set_active_model(
         .get_model_info(&model_id)
         .ok_or_else(|| format!("Model not found: {}", model_id))?;
 
-    if !model_info.is_downloaded {
+    // Remote models are always "downloaded" (available), local models need to be downloaded
+    use crate::managers::model::EngineType;
+    if model_info.engine_type != EngineType::RemoteWhisper && !model_info.is_downloaded {
         return Err(format!("Model not downloaded: {}", model_id));
     }
 
@@ -122,4 +124,35 @@ pub async fn cancel_download(
 pub async fn get_recommended_first_model() -> Result<String, String> {
     // Recommend Parakeet V3 model for first-time users - fastest and most accurate
     Ok("parakeet-tdt-0.6b-v3".to_string())
+}
+
+#[tauri::command]
+pub async fn add_remote_model(
+    model_manager: State<'_, Arc<ModelManager>>,
+    id: String,
+    name: String,
+    description: String,
+    api_url: String,
+    api_key: Option<String>,
+    model_name: String,
+) -> Result<(), String> {
+    let remote_config = crate::managers::model::RemoteModelConfig {
+        api_url,
+        api_key,
+        model_name,
+    };
+    
+    model_manager
+        .add_remote_model(id, name, description, remote_config)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn remove_remote_model(
+    model_manager: State<'_, Arc<ModelManager>>,
+    model_id: String,
+) -> Result<(), String> {
+    model_manager
+        .remove_remote_model(&model_id)
+        .map_err(|e| e.to_string())
 }

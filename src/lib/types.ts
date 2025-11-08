@@ -34,6 +34,12 @@ export const ModelUnloadTimeoutSchema = z.enum([
 ]);
 export type ModelUnloadTimeout = z.infer<typeof ModelUnloadTimeoutSchema>;
 
+export const RemoteModelInfoSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  config: RemoteModelConfigSchema,
+});
+
 export const SettingsSchema = z.object({
   bindings: ShortcutBindingsMapSchema,
   push_to_talk: z.boolean(),
@@ -50,6 +56,7 @@ export const SettingsSchema = z.object({
   custom_words: z.array(z.string()).optional().default([]),
   model_unload_timeout: ModelUnloadTimeoutSchema.optional().default("never"),
   word_correction_threshold: z.number().optional().default(0.18),
+  remote_models: z.record(z.string(), RemoteModelInfoSchema).optional().default({}),
 });
 
 export const BindingResponseSchema = z.object({
@@ -88,5 +95,6 @@ export const ModelInfoSchema = z.object({
 });
 
 export type RemoteModelConfig = z.infer<typeof RemoteModelConfigSchema>;
+export type RemoteModelInfo = z.infer<typeof RemoteModelInfoSchema>;
 export type EngineType = z.infer<typeof EngineTypeSchema>;
 export type ModelInfo = z.infer<typeof ModelInfoSchema>;

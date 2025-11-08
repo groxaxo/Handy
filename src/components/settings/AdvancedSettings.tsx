@@ -4,6 +4,7 @@ import { TranslateToEnglish } from "./TranslateToEnglish";
 import { ModelUnloadTimeoutSetting } from "./ModelUnloadTimeout";
 import { CustomWords } from "./CustomWords";
 import { AlwaysOnMicrophone } from "./AlwaysOnMicrophone";
+import { RemoteModels } from "./RemoteModels";
 import { SettingsGroup } from "../ui/SettingsGroup";
 import { StartHidden } from "./StartHidden";
 
@@ -17,6 +18,7 @@ export const AdvancedSettings: React.FC = () => {
         <ModelUnloadTimeoutSetting descriptionMode="tooltip" grouped={true} />
         <CustomWords descriptionMode="tooltip" grouped />
         <AlwaysOnMicrophone descriptionMode="tooltip" grouped={true} />
+        <RemoteModels descriptionMode="tooltip" grouped={true} />
       </SettingsGroup>
     </div>
   );

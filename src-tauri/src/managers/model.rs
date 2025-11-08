@@ -166,10 +166,13 @@ impl ModelManager {
         );
 
         let manager = Self {
-            app_handle,
+            app_handle: app_handle.clone(),
             models_dir,
             available_models: Mutex::new(available_models),
         };
+
+        // Load remote models from settings
+        manager.load_remote_models_from_settings()?;
 
         // Migrate any bundled models to user directory
         manager.migrate_bundled_models()?;
@@ -191,6 +194,31 @@ impl ModelManager {
     pub fn get_model_info(&self, model_id: &str) -> Option<ModelInfo> {
         let models = self.available_models.lock().unwrap();
         models.get(model_id).cloned()
+    }
+
+    fn load_remote_models_from_settings(&self) -> Result<()> {
+        let settings = get_settings(&self.app_handle);
+        let mut models = self.available_models.lock().unwrap();
+
+        for (id, remote_info) in settings.remote_models {
+            let model_info = ModelInfo {
+                id: id.clone(),
+                name: remote_info.name,
+                description: remote_info.description,
+                filename: String::new(),
+                url: None,
+                size_mb: 0,
+                is_downloaded: true, // Remote models are always "available"
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: false,
+                engine_type: EngineType::RemoteWhisper,
+                remote_config: Some(remote_info.config),
+            };
+            models.insert(id, model_info);
+        }
+
+        Ok(())
     }
 
     fn migrate_bundled_models(&self) -> Result<()> {
@@ -685,8 +713,8 @@ impl ModelManager {
 
         let model_info = ModelInfo {
             id: id.clone(),
-            name,
-            description,
+            name: name.clone(),
+            description: description.clone(),
             filename: String::new(), // Not needed for remote models
             url: None,
             size_mb: 0,
@@ -695,10 +723,24 @@ impl ModelManager {
             partial_size: 0,
             is_directory: false,
             engine_type: EngineType::RemoteWhisper,
-            remote_config: Some(remote_config),
+            remote_config: Some(remote_config.clone()),
         };
 
-        models.insert(id, model_info);
+        models.insert(id.clone(), model_info);
+        drop(models); // Release lock before settings operations
+
+        // Persist to settings
+        let mut settings = get_settings(&self.app_handle);
+        settings.remote_models.insert(
+            id,
+            crate::settings::RemoteModelInfo {
+                name,
+                description,
+                config: remote_config,
+            },
+        );
+        write_settings(&self.app_handle, settings);
+
         Ok(())
     }
 
@@ -719,6 +761,13 @@ impl ModelManager {
         }
 
         models.remove(model_id);
+        drop(models); // Release lock before settings operations
+
+        // Remove from settings
+        let mut settings = get_settings(&self.app_handle);
+        settings.remote_models.remove(model_id);
+        write_settings(&self.app_handle, settings);
+
         Ok(())
     }
 }

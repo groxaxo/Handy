@@ -1,3 +1,4 @@
+use crate::managers::model::RemoteModelConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tauri::{App, AppHandle};
@@ -93,6 +94,15 @@ pub struct AppSettings {
     pub model_unload_timeout: ModelUnloadTimeout,
     #[serde(default = "default_word_correction_threshold")]
     pub word_correction_threshold: f64,
+    #[serde(default)]
+    pub remote_models: HashMap<String, RemoteModelInfo>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RemoteModelInfo {
+    pub name: String,
+    pub description: String,
+    pub config: RemoteModelConfig,
 }
 
 fn default_model() -> String {
@@ -167,6 +177,7 @@ pub fn get_default_settings() -> AppSettings {
         custom_words: Vec::new(),
         model_unload_timeout: ModelUnloadTimeout::Never,
         word_correction_threshold: default_word_correction_threshold(),
+        remote_models: HashMap::new(),
     }
 }
 

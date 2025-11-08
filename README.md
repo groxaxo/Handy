@@ -24,11 +24,12 @@ Handy isn't trying to be the best speech-to-text app—it's trying to be the mos
 3. **Release** and Handy processes your speech using Whisper
 4. **Get** your transcribed text pasted directly into whatever app you're using
 
-The process is entirely local:
+The process can be entirely local or use remote APIs:
 - Silence is filtered using VAD (Voice Activity Detection) with Silero
 - Transcription uses your choice of models:
   - **Whisper models** (Small/Medium/Turbo/Large) with GPU acceleration when available
   - **Parakeet V3** - CPU-optimized model with excellent performance and automatic language detection
+  - **Remote OpenAI-compatible APIs** - Use OpenAI, Azure OpenAI, or self-hosted endpoints (see [Remote Models Documentation](docs/REMOTE_MODELS.md))
 - Works on Windows, macOS, and Linux
 
 ## Quick Start

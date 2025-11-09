@@ -36,7 +36,7 @@ The process can be entirely local or use remote APIs:
 
 ### Installation
 
-1. Download the latest release from the [releases page](https://github.com/cjpais/Handy/releases) or the [website](https://handy.computer)
+1. Download the latest release from the [releases page](https://github.com/groxaxo/Handy/releases) or the [website](https://handy.computer)
 2. Install the application following platform-specific instructions
 3. Launch Handy and grant necessary system permissions (microphone, accessibility)
 4. Configure your preferred keyboard shortcuts in Settings
@@ -62,7 +62,7 @@ Handy is built as a Tauri application combining:
 
 ## Known Issues & Current Limitations
 
-This project is actively being developed and has some [known issues](https://github.com/cjpais/Handy/issues). We believe in transparency about the current state:
+This project is actively being developed and has some [known issues](https://github.com/groxaxo/Handy/issues). We believe in transparency about the current state:
 
 ### Platform Support
 - **Apple Silicon Macs**
@@ -87,7 +87,7 @@ The following are recommendations for running Handy on your own machine. If you 
 
 ### How to Contribute
 
-1. **Check existing issues** at [github.com/cjpais/Handy/issues](https://github.com/cjpais/Handy/issues)
+1. **Check existing issues** at [github.com/groxaxo/Handy/issues](https://github.com/groxaxo/Handy/issues)
 2. **Fork the repository** and create a feature branch
 3. **Test thoroughly** on your target platform
 4. **Submit a pull request** with clear description of changes

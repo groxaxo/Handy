@@ -30,6 +30,7 @@ pub struct ModelStateEvent {
 enum LoadedEngine {
     Whisper(WhisperEngine),
     Parakeet(ParakeetEngine),
+    RemoteWhisper, // Remote engines don't need to hold state in the same way
 }
 
 #[derive(Clone)]
@@ -144,6 +145,7 @@ impl TranscriptionManager {
                 match loaded_engine {
                     LoadedEngine::Whisper(ref mut whisper) => whisper.unload_model(),
                     LoadedEngine::Parakeet(ref mut parakeet) => parakeet.unload_model(),
+                    LoadedEngine::RemoteWhisper => {} // Remote models don't need cleanup
                 }
             }
             *engine = None; // Drop the engine to free memory
@@ -192,25 +194,42 @@ impl TranscriptionManager {
             .get_model_info(model_id)
             .ok_or_else(|| anyhow::anyhow!("Model not found: {}", model_id))?;
 
-        if !model_info.is_downloaded {
-            let error_msg = "Model not downloaded";
-            let _ = self.app_handle.emit(
-                "model-state-changed",
-                ModelStateEvent {
-                    event_type: "loading_failed".to_string(),
-                    model_id: Some(model_id.to_string()),
-                    model_name: Some(model_info.name.clone()),
-                    error: Some(error_msg.to_string()),
-                },
-            );
-            return Err(anyhow::anyhow!(error_msg));
-        }
-
-        let model_path = self.model_manager.get_model_path(model_id)?;
-
         // Create appropriate engine based on model type
         let loaded_engine = match model_info.engine_type {
+            EngineType::RemoteWhisper => {
+                // Remote models don't need to be "downloaded" or "loaded" in the traditional sense
+                // They're always "ready" as long as the configuration is valid
+                if model_info.remote_config.is_none() {
+                    let error_msg = "Remote model configuration missing";
+                    let _ = self.app_handle.emit(
+                        "model-state-changed",
+                        ModelStateEvent {
+                            event_type: "loading_failed".to_string(),
+                            model_id: Some(model_id.to_string()),
+                            model_name: Some(model_info.name.clone()),
+                            error: Some(error_msg.to_string()),
+                        },
+                    );
+                    return Err(anyhow::anyhow!(error_msg));
+                }
+                LoadedEngine::RemoteWhisper
+            }
             EngineType::Whisper => {
+                if !model_info.is_downloaded {
+                    let error_msg = "Model not downloaded";
+                    let _ = self.app_handle.emit(
+                        "model-state-changed",
+                        ModelStateEvent {
+                            event_type: "loading_failed".to_string(),
+                            model_id: Some(model_id.to_string()),
+                            model_name: Some(model_info.name.clone()),
+                            error: Some(error_msg.to_string()),
+                        },
+                    );
+                    return Err(anyhow::anyhow!(error_msg));
+                }
+
+                let model_path = self.model_manager.get_model_path(model_id)?;
                 let mut engine = WhisperEngine::new();
                 engine.load_model(&model_path).map_err(|e| {
                     let error_msg = format!("Failed to load whisper model {}: {}", model_id, e);
@@ -228,6 +247,21 @@ impl TranscriptionManager {
                 LoadedEngine::Whisper(engine)
             }
             EngineType::Parakeet => {
+                if !model_info.is_downloaded {
+                    let error_msg = "Model not downloaded";
+                    let _ = self.app_handle.emit(
+                        "model-state-changed",
+                        ModelStateEvent {
+                            event_type: "loading_failed".to_string(),
+                            model_id: Some(model_id.to_string()),
+                            model_name: Some(model_info.name.clone()),
+                            error: Some(error_msg.to_string()),
+                        },
+                    );
+                    return Err(anyhow::anyhow!(error_msg));
+                }
+
+                let model_path = self.model_manager.get_model_path(model_id)?;
                 let mut engine = ParakeetEngine::new();
                 engine
                     .load_model_with_params(&model_path, ParakeetModelParams::int8())
@@ -351,7 +385,7 @@ impl TranscriptionManager {
                     };
 
                     whisper_engine
-                        .transcribe_samples(audio, Some(params))
+                        .transcribe_samples(audio.clone(), Some(params))
                         .map_err(|e| anyhow::anyhow!("Whisper transcription failed: {}", e))?
                 }
                 LoadedEngine::Parakeet(parakeet_engine) => {
@@ -361,8 +395,47 @@ impl TranscriptionManager {
                     };
 
                     parakeet_engine
-                        .transcribe_samples(audio, Some(params))
+                        .transcribe_samples(audio.clone(), Some(params))
                         .map_err(|e| anyhow::anyhow!("Parakeet transcription failed: {}", e))?
+                }
+                LoadedEngine::RemoteWhisper => {
+                    // For remote models, we need to get the model info to access the config
+                    let current_model_id = self.current_model_id.lock().unwrap().clone();
+                    let model_id = current_model_id.ok_or_else(|| {
+                        anyhow::anyhow!("No model ID set for remote transcription")
+                    })?;
+                    
+                    let model_info = self.model_manager.get_model_info(&model_id)
+                        .ok_or_else(|| anyhow::anyhow!("Model info not found: {}", model_id))?;
+                    
+                    let remote_config = model_info.remote_config
+                        .ok_or_else(|| anyhow::anyhow!("Remote config missing for model: {}", model_id))?;
+                    
+                    // Release the lock before async operation
+                    drop(engine_guard);
+                    
+                    let language = if settings.selected_language == "auto" {
+                        None
+                    } else {
+                        Some(settings.selected_language.clone())
+                    };
+                    
+                    // Use tokio to block on the async transcription
+                    let runtime = tokio::runtime::Runtime::new()?;
+                    let text = runtime.block_on(async {
+                        crate::managers::remote_transcription::transcribe_remote(
+                            audio.clone(),
+                            16000, // Standard sample rate for Whisper
+                            &remote_config,
+                            language,
+                        ).await
+                    })?;
+                    
+                    // Create a result structure similar to the local engines
+                    transcribe_rs::TranscriptionResult {
+                        text,
+                        segments: vec![],
+                    }
                 }
             }
         };

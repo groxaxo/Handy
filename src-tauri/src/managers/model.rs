@@ -12,10 +12,18 @@ use std::sync::Mutex;
 use tar::Archive;
 use tauri::{App, AppHandle, Emitter, Manager};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum EngineType {
     Whisper,
     Parakeet,
+    RemoteWhisper,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RemoteModelConfig {
+    pub api_url: String,
+    pub api_key: Option<String>,
+    pub model_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,6 +39,7 @@ pub struct ModelInfo {
     pub partial_size: u64,
     pub is_directory: bool,
     pub engine_type: EngineType,
+    pub remote_config: Option<RemoteModelConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,6 +87,7 @@ impl ModelManager {
                 partial_size: 0,
                 is_directory: false,
                 engine_type: EngineType::Whisper,
+                remote_config: None,
             },
         );
 
@@ -96,6 +106,7 @@ impl ModelManager {
                 partial_size: 0,
                 is_directory: false,
                 engine_type: EngineType::Whisper,
+                remote_config: None,
             },
         );
 
@@ -113,6 +124,7 @@ impl ModelManager {
                 partial_size: 0,
                 is_directory: false,
                 engine_type: EngineType::Whisper,
+                remote_config: None,
             },
         );
 
@@ -130,6 +142,7 @@ impl ModelManager {
                 partial_size: 0,
                 is_directory: false,
                 engine_type: EngineType::Whisper,
+                remote_config: None,
             },
         );
 
@@ -148,14 +161,18 @@ impl ModelManager {
                 partial_size: 0,
                 is_directory: true,
                 engine_type: EngineType::Parakeet,
+                remote_config: None,
             },
         );
 
         let manager = Self {
-            app_handle,
+            app_handle: app_handle.clone(),
             models_dir,
             available_models: Mutex::new(available_models),
         };
+
+        // Load remote models from settings
+        manager.load_remote_models_from_settings()?;
 
         // Migrate any bundled models to user directory
         manager.migrate_bundled_models()?;
@@ -177,6 +194,31 @@ impl ModelManager {
     pub fn get_model_info(&self, model_id: &str) -> Option<ModelInfo> {
         let models = self.available_models.lock().unwrap();
         models.get(model_id).cloned()
+    }
+
+    fn load_remote_models_from_settings(&self) -> Result<()> {
+        let settings = get_settings(&self.app_handle);
+        let mut models = self.available_models.lock().unwrap();
+
+        for (id, remote_info) in settings.remote_models {
+            let model_info = ModelInfo {
+                id: id.clone(),
+                name: remote_info.name,
+                description: remote_info.description,
+                filename: String::new(),
+                url: None,
+                size_mb: 0,
+                is_downloaded: true, // Remote models are always "available"
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: false,
+                engine_type: EngineType::RemoteWhisper,
+                remote_config: Some(remote_info.config),
+            };
+            models.insert(id, model_info);
+        }
+
+        Ok(())
     }
 
     fn migrate_bundled_models(&self) -> Result<()> {
@@ -651,6 +693,81 @@ impl ModelManager {
         self.update_download_status()?;
 
         println!("ModelManager: Download cancelled for: {}", model_id);
+        Ok(())
+    }
+
+    /// Add a remote model configuration
+    pub fn add_remote_model(
+        &self,
+        id: String,
+        name: String,
+        description: String,
+        remote_config: RemoteModelConfig,
+    ) -> Result<()> {
+        let mut models = self.available_models.lock().unwrap();
+        
+        // Check if model ID already exists
+        if models.contains_key(&id) {
+            return Err(anyhow::anyhow!("Model with ID '{}' already exists", id));
+        }
+
+        let model_info = ModelInfo {
+            id: id.clone(),
+            name: name.clone(),
+            description: description.clone(),
+            filename: String::new(), // Not needed for remote models
+            url: None,
+            size_mb: 0,
+            is_downloaded: true, // Remote models are always "available"
+            is_downloading: false,
+            partial_size: 0,
+            is_directory: false,
+            engine_type: EngineType::RemoteWhisper,
+            remote_config: Some(remote_config.clone()),
+        };
+
+        models.insert(id.clone(), model_info);
+        drop(models); // Release lock before settings operations
+
+        // Persist to settings
+        let mut settings = get_settings(&self.app_handle);
+        settings.remote_models.insert(
+            id,
+            crate::settings::RemoteModelInfo {
+                name,
+                description,
+                config: remote_config,
+            },
+        );
+        write_settings(&self.app_handle, settings);
+
+        Ok(())
+    }
+
+    /// Remove a remote model configuration
+    pub fn remove_remote_model(&self, model_id: &str) -> Result<()> {
+        let mut models = self.available_models.lock().unwrap();
+        
+        // Check if model exists and is a remote model
+        if let Some(model) = models.get(model_id) {
+            if model.engine_type != EngineType::RemoteWhisper {
+                return Err(anyhow::anyhow!(
+                    "Model '{}' is not a remote model",
+                    model_id
+                ));
+            }
+        } else {
+            return Err(anyhow::anyhow!("Model '{}' not found", model_id));
+        }
+
+        models.remove(model_id);
+        drop(models); // Release lock before settings operations
+
+        // Remove from settings
+        let mut settings = get_settings(&self.app_handle);
+        settings.remote_models.remove(model_id);
+        write_settings(&self.app_handle, settings);
+
         Ok(())
     }
 }

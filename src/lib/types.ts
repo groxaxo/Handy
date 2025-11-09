@@ -34,6 +34,12 @@ export const ModelUnloadTimeoutSchema = z.enum([
 ]);
 export type ModelUnloadTimeout = z.infer<typeof ModelUnloadTimeoutSchema>;
 
+export const RemoteModelInfoSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  config: RemoteModelConfigSchema,
+});
+
 export const SettingsSchema = z.object({
   bindings: ShortcutBindingsMapSchema,
   push_to_talk: z.boolean(),
@@ -50,6 +56,7 @@ export const SettingsSchema = z.object({
   custom_words: z.array(z.string()).optional().default([]),
   model_unload_timeout: ModelUnloadTimeoutSchema.optional().default("never"),
   word_correction_threshold: z.number().optional().default(0.18),
+  remote_models: z.record(z.string(), RemoteModelInfoSchema).optional().default({}),
 });
 
 export const BindingResponseSchema = z.object({
@@ -64,6 +71,14 @@ export type ShortcutBinding = z.infer<typeof ShortcutBindingSchema>;
 export type ShortcutBindingsMap = z.infer<typeof ShortcutBindingsMapSchema>;
 export type Settings = z.infer<typeof SettingsSchema>;
 
+export const RemoteModelConfigSchema = z.object({
+  api_url: z.string(),
+  api_key: z.string().optional(),
+  model_name: z.string(),
+});
+
+export const EngineTypeSchema = z.enum(["Whisper", "Parakeet", "RemoteWhisper"]);
+
 export const ModelInfoSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -75,6 +90,11 @@ export const ModelInfoSchema = z.object({
   is_downloading: z.boolean(),
   partial_size: z.number(),
   is_directory: z.boolean(),
+  engine_type: EngineTypeSchema,
+  remote_config: RemoteModelConfigSchema.optional(),
 });
 
+export type RemoteModelConfig = z.infer<typeof RemoteModelConfigSchema>;
+export type RemoteModelInfo = z.infer<typeof RemoteModelInfoSchema>;
+export type EngineType = z.infer<typeof EngineTypeSchema>;
 export type ModelInfo = z.infer<typeof ModelInfoSchema>;

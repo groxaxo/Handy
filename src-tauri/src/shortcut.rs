@@ -1,26 +1,42 @@
+use log::{error, warn};
 use serde::Serialize;
-use tauri::{App, AppHandle, Emitter, Manager};
-use tauri_plugin_global_shortcut::GlobalShortcutExt;
-use tauri_plugin_global_shortcut::{Shortcut, ShortcutState};
+use specta::Type;
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use crate::actions::ACTION_MAP;
+use crate::managers::audio::AudioRecordingManager;
 use crate::settings::ShortcutBinding;
-use crate::settings::{self, get_settings, OverlayPosition};
+use crate::settings::{
+    self, get_settings, ClipboardHandling, LLMPrompt, OverlayPosition, PasteMethod, SoundTheme,
+    APPLE_INTELLIGENCE_DEFAULT_MODEL_ID, APPLE_INTELLIGENCE_PROVIDER_ID,
+};
 use crate::ManagedToggleState;
 
-pub fn init_shortcuts(app: &App) {
-    let settings = settings::load_or_create_app_settings(app);
+pub fn init_shortcuts(app: &AppHandle) {
+    let default_bindings = settings::get_default_settings().bindings;
+    let user_settings = settings::load_or_create_app_settings(app);
 
-    // Register shortcuts with the bindings from settings
-    for (_id, binding) in settings.bindings {
-        // Pass app.handle() which is &AppHandle
-        if let Err(e) = _register_shortcut(app.handle(), binding) {
-            eprintln!("Failed to register shortcut {} during init: {}", _id, e);
+    // Register all default shortcuts, applying user customizations
+    for (id, default_binding) in default_bindings {
+        if id == "cancel" {
+            continue; // Skip cancel shortcut, it will be registered dynamically
+        }
+        let binding = user_settings
+            .bindings
+            .get(&id)
+            .cloned()
+            .unwrap_or(default_binding);
+
+        if let Err(e) = register_shortcut(app, binding) {
+            error!("Failed to register shortcut {} during init: {}", id, e);
         }
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Type)]
 pub struct BindingResponse {
     success: bool,
     binding: Option<ShortcutBinding>,
@@ -28,6 +44,7 @@ pub struct BindingResponse {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn change_binding(
     app: AppHandle,
     id: String,
@@ -40,7 +57,7 @@ pub fn change_binding(
         Some(binding) => binding.clone(),
         None => {
             let error_msg = format!("Binding with id '{}' not found", id);
-            eprintln!("change_binding error: {}", error_msg);
+            warn!("change_binding error: {}", error_msg);
             return Ok(BindingResponse {
                 success: false,
                 binding: None,
@@ -48,16 +65,30 @@ pub fn change_binding(
             });
         }
     };
+    // If this is the cancel binding, just update the settings and return
+    // It's managed dynamically, so we don't register/unregister here
+    if id == "cancel" {
+        if let Some(mut b) = settings.bindings.get(&id).cloned() {
+            b.current_binding = binding;
+            settings.bindings.insert(id.clone(), b.clone());
+            settings::write_settings(&app, settings);
+            return Ok(BindingResponse {
+                success: true,
+                binding: Some(b.clone()),
+                error: None,
+            });
+        }
+    }
 
     // Unregister the existing binding
-    if let Err(e) = _unregister_shortcut(&app, binding_to_modify.clone()) {
+    if let Err(e) = unregister_shortcut(&app, binding_to_modify.clone()) {
         let error_msg = format!("Failed to unregister shortcut: {}", e);
-        eprintln!("change_binding error: {}", error_msg);
+        error!("change_binding error: {}", error_msg);
     }
 
     // Validate the new shortcut before we touch the current registration
     if let Err(e) = validate_shortcut_string(&binding) {
-        eprintln!("change_binding validation error: {}", e);
+        warn!("change_binding validation error: {}", e);
         return Err(e);
     }
 
@@ -66,9 +97,9 @@ pub fn change_binding(
     updated_binding.current_binding = binding;
 
     // Register the new binding
-    if let Err(e) = _register_shortcut(&app, updated_binding.clone()) {
+    if let Err(e) = register_shortcut(&app, updated_binding.clone()) {
         let error_msg = format!("Failed to register shortcut: {}", e);
-        eprintln!("change_binding error: {}", error_msg);
+        error!("change_binding error: {}", error_msg);
         return Ok(BindingResponse {
             success: false,
             binding: None,
@@ -91,6 +122,7 @@ pub fn change_binding(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn reset_binding(app: AppHandle, id: String) -> Result<BindingResponse, String> {
     let binding = settings::get_stored_binding(&app, &id);
 
@@ -98,6 +130,7 @@ pub fn reset_binding(app: AppHandle, id: String) -> Result<BindingResponse, Stri
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn change_ptt_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
 
@@ -111,6 +144,7 @@ pub fn change_ptt_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn change_audio_feedback_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.audio_feedback = enabled;
@@ -119,6 +153,34 @@ pub fn change_audio_feedback_setting(app: AppHandle, enabled: bool) -> Result<()
 }
 
 #[tauri::command]
+#[specta::specta]
+pub fn change_audio_feedback_volume_setting(app: AppHandle, volume: f32) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.audio_feedback_volume = volume;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_sound_theme_setting(app: AppHandle, theme: String) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    let parsed = match theme.as_str() {
+        "marimba" => SoundTheme::Marimba,
+        "pop" => SoundTheme::Pop,
+        "custom" => SoundTheme::Custom,
+        other => {
+            warn!("Invalid sound theme '{}', defaulting to marimba", other);
+            SoundTheme::Marimba
+        }
+    };
+    settings.sound_theme = parsed;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn change_translate_to_english_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.translate_to_english = enabled;
@@ -127,6 +189,7 @@ pub fn change_translate_to_english_setting(app: AppHandle, enabled: bool) -> Res
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn change_selected_language_setting(app: AppHandle, language: String) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.selected_language = language;
@@ -135,6 +198,7 @@ pub fn change_selected_language_setting(app: AppHandle, language: String) -> Res
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn change_overlay_position_setting(app: AppHandle, position: String) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     let parsed = match position.as_str() {
@@ -142,7 +206,7 @@ pub fn change_overlay_position_setting(app: AppHandle, position: String) -> Resu
         "top" => OverlayPosition::Top,
         "bottom" => OverlayPosition::Bottom,
         other => {
-            eprintln!("Invalid overlay position '{}', defaulting to bottom", other);
+            warn!("Invalid overlay position '{}', defaulting to bottom", other);
             OverlayPosition::Bottom
         }
     };
@@ -156,6 +220,7 @@ pub fn change_overlay_position_setting(app: AppHandle, position: String) -> Resu
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn change_debug_mode_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.debug_mode = enabled;
@@ -174,6 +239,7 @@ pub fn change_debug_mode_setting(app: AppHandle, enabled: bool) -> Result<(), St
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn change_start_hidden_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.start_hidden = enabled;
@@ -192,6 +258,52 @@ pub fn change_start_hidden_setting(app: AppHandle, enabled: bool) -> Result<(), 
 }
 
 #[tauri::command]
+#[specta::specta]
+pub fn change_autostart_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.autostart_enabled = enabled;
+    settings::write_settings(&app, settings);
+
+    // Apply the autostart setting immediately
+    let autostart_manager = app.autolaunch();
+    if enabled {
+        let _ = autostart_manager.enable();
+    } else {
+        let _ = autostart_manager.disable();
+    }
+
+    // Notify frontend
+    let _ = app.emit(
+        "settings-changed",
+        serde_json::json!({
+            "setting": "autostart_enabled",
+            "value": enabled
+        }),
+    );
+
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_update_checks_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.update_checks_enabled = enabled;
+    settings::write_settings(&app, settings);
+
+    let _ = app.emit(
+        "settings-changed",
+        serde_json::json!({
+            "setting": "update_checks_enabled",
+            "value": enabled
+        }),
+    );
+
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn update_custom_words(app: AppHandle, words: Vec<String>) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.custom_words = words;
@@ -200,6 +312,7 @@ pub fn update_custom_words(app: AppHandle, words: Vec<String>) -> Result<(), Str
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn change_word_correction_threshold_setting(
     app: AppHandle,
     threshold: f64,
@@ -207,6 +320,399 @@ pub fn change_word_correction_threshold_setting(
     let mut settings = settings::get_settings(&app);
     settings.word_correction_threshold = threshold;
     settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_paste_method_setting(app: AppHandle, method: String) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    let parsed = match method.as_str() {
+        "ctrl_v" => PasteMethod::CtrlV,
+        "direct" => PasteMethod::Direct,
+        "none" => PasteMethod::None,
+        "shift_insert" => PasteMethod::ShiftInsert,
+        other => {
+            warn!("Invalid paste method '{}', defaulting to ctrl_v", other);
+            PasteMethod::CtrlV
+        }
+    };
+    settings.paste_method = parsed;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_clipboard_handling_setting(app: AppHandle, handling: String) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    let parsed = match handling.as_str() {
+        "dont_modify" => ClipboardHandling::DontModify,
+        "copy_to_clipboard" => ClipboardHandling::CopyToClipboard,
+        other => {
+            warn!(
+                "Invalid clipboard handling '{}', defaulting to dont_modify",
+                other
+            );
+            ClipboardHandling::DontModify
+        }
+    };
+    settings.clipboard_handling = parsed;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_post_process_enabled_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.post_process_enabled = enabled;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_post_process_base_url_setting(
+    app: AppHandle,
+    provider_id: String,
+    base_url: String,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    let label = settings
+        .post_process_provider(&provider_id)
+        .map(|provider| provider.label.clone())
+        .ok_or_else(|| format!("Provider '{}' not found", provider_id))?;
+
+    let provider = settings
+        .post_process_provider_mut(&provider_id)
+        .expect("Provider looked up above must exist");
+
+    if !provider.allow_base_url_edit {
+        return Err(format!(
+            "Provider '{}' does not allow editing the base URL",
+            label
+        ));
+    }
+
+    provider.base_url = base_url;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+/// Generic helper to validate provider exists
+fn validate_provider_exists(
+    settings: &settings::AppSettings,
+    provider_id: &str,
+) -> Result<(), String> {
+    if !settings
+        .post_process_providers
+        .iter()
+        .any(|provider| provider.id == provider_id)
+    {
+        return Err(format!("Provider '{}' not found", provider_id));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_post_process_api_key_setting(
+    app: AppHandle,
+    provider_id: String,
+    api_key: String,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    validate_provider_exists(&settings, &provider_id)?;
+    settings.post_process_api_keys.insert(provider_id, api_key);
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_post_process_model_setting(
+    app: AppHandle,
+    provider_id: String,
+    model: String,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    validate_provider_exists(&settings, &provider_id)?;
+    settings.post_process_models.insert(provider_id, model);
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_post_process_provider(app: AppHandle, provider_id: String) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    validate_provider_exists(&settings, &provider_id)?;
+    settings.post_process_provider_id = provider_id;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn add_post_process_prompt(
+    app: AppHandle,
+    name: String,
+    prompt: String,
+) -> Result<LLMPrompt, String> {
+    let mut settings = settings::get_settings(&app);
+
+    // Generate unique ID using timestamp and random component
+    let id = format!("prompt_{}", chrono::Utc::now().timestamp_millis());
+
+    let new_prompt = LLMPrompt {
+        id: id.clone(),
+        name,
+        prompt,
+    };
+
+    settings.post_process_prompts.push(new_prompt.clone());
+    settings::write_settings(&app, settings);
+
+    Ok(new_prompt)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn update_post_process_prompt(
+    app: AppHandle,
+    id: String,
+    name: String,
+    prompt: String,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+
+    if let Some(existing_prompt) = settings
+        .post_process_prompts
+        .iter_mut()
+        .find(|p| p.id == id)
+    {
+        existing_prompt.name = name;
+        existing_prompt.prompt = prompt;
+        settings::write_settings(&app, settings);
+        Ok(())
+    } else {
+        Err(format!("Prompt with id '{}' not found", id))
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn delete_post_process_prompt(app: AppHandle, id: String) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+
+    // Don't allow deleting the last prompt
+    if settings.post_process_prompts.len() <= 1 {
+        return Err("Cannot delete the last prompt".to_string());
+    }
+
+    // Find and remove the prompt
+    let original_len = settings.post_process_prompts.len();
+    settings.post_process_prompts.retain(|p| p.id != id);
+
+    if settings.post_process_prompts.len() == original_len {
+        return Err(format!("Prompt with id '{}' not found", id));
+    }
+
+    // If the deleted prompt was selected, select the first one or None
+    if settings.post_process_selected_prompt_id.as_ref() == Some(&id) {
+        settings.post_process_selected_prompt_id =
+            settings.post_process_prompts.first().map(|p| p.id.clone());
+    }
+
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn fetch_post_process_models(
+    app: AppHandle,
+    provider_id: String,
+) -> Result<Vec<String>, String> {
+    let settings = settings::get_settings(&app);
+
+    // Find the provider
+    let provider = settings
+        .post_process_providers
+        .iter()
+        .find(|p| p.id == provider_id)
+        .ok_or_else(|| format!("Provider '{}' not found", provider_id))?;
+
+    if provider.id == APPLE_INTELLIGENCE_PROVIDER_ID {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            return Ok(vec![APPLE_INTELLIGENCE_DEFAULT_MODEL_ID.to_string()]);
+        }
+
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        {
+            return Err("Apple Intelligence is only available on Apple silicon Macs running macOS 15 or later.".to_string());
+        }
+    }
+
+    // Get API key
+    let api_key = settings
+        .post_process_api_keys
+        .get(&provider_id)
+        .cloned()
+        .unwrap_or_default();
+
+    // Skip fetching if no API key for providers that typically need one
+    if api_key.trim().is_empty() && provider.id != "custom" {
+        return Err(format!(
+            "API key is required for {}. Please add an API key to list available models.",
+            provider.label
+        ));
+    }
+
+    // TODO: In the future, we can use async-openai's models API:
+    // let client = crate::llm_client::create_client(provider, api_key)?;
+    // let response = client.models().list().await?;
+    // return Ok(response.data.iter().map(|m| m.id.clone()).collect());
+
+    // For now, use manual HTTP request to have more control over the endpoint
+    fetch_models_manual(provider, api_key).await
+}
+
+/// Fetch models using manual HTTP request
+/// This gives us more control and avoids issues with non-standard endpoints
+async fn fetch_models_manual(
+    provider: &crate::settings::PostProcessProvider,
+    api_key: String,
+) -> Result<Vec<String>, String> {
+    // Build the endpoint URL
+    let base_url = provider.base_url.trim_end_matches('/');
+    let models_endpoint = provider
+        .models_endpoint
+        .as_ref()
+        .map(|s| s.trim_start_matches('/'))
+        .unwrap_or("models");
+    let endpoint = format!("{}/{}", base_url, models_endpoint);
+
+    // Create HTTP client with headers
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        "HTTP-Referer",
+        reqwest::header::HeaderValue::from_static("https://github.com/cjpais/Handy"),
+    );
+    headers.insert(
+        "X-Title",
+        reqwest::header::HeaderValue::from_static("Handy"),
+    );
+
+    // Add provider-specific headers
+    if provider.id == "anthropic" {
+        if !api_key.is_empty() {
+            headers.insert(
+                "x-api-key",
+                reqwest::header::HeaderValue::from_str(&api_key)
+                    .map_err(|e| format!("Invalid API key: {}", e))?,
+            );
+        }
+        headers.insert(
+            "anthropic-version",
+            reqwest::header::HeaderValue::from_static("2023-06-01"),
+        );
+    } else if !api_key.is_empty() {
+        headers.insert(
+            "Authorization",
+            reqwest::header::HeaderValue::from_str(&format!("Bearer {}", api_key))
+                .map_err(|e| format!("Invalid API key: {}", e))?,
+        );
+    }
+
+    let http_client = reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    // Make the request
+    let response = http_client
+        .get(&endpoint)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch models: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        return Err(format!(
+            "Model list request failed ({}): {}",
+            status, error_text
+        ));
+    }
+
+    // Parse the response
+    let parsed: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    let mut models = Vec::new();
+
+    // Handle OpenAI format: { data: [ { id: "..." }, ... ] }
+    if let Some(data) = parsed.get("data").and_then(|d| d.as_array()) {
+        for entry in data {
+            if let Some(id) = entry.get("id").and_then(|i| i.as_str()) {
+                models.push(id.to_string());
+            } else if let Some(name) = entry.get("name").and_then(|n| n.as_str()) {
+                models.push(name.to_string());
+            }
+        }
+    }
+    // Handle array format: [ "model1", "model2", ... ]
+    else if let Some(array) = parsed.as_array() {
+        for entry in array {
+            if let Some(model) = entry.as_str() {
+                models.push(model.to_string());
+            }
+        }
+    }
+
+    Ok(models)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_post_process_selected_prompt(app: AppHandle, id: String) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+
+    // Verify the prompt exists
+    if !settings.post_process_prompts.iter().any(|p| p.id == id) {
+        return Err(format!("Prompt with id '{}' not found", id));
+    }
+
+    settings.post_process_selected_prompt_id = Some(id);
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_mute_while_recording_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.mute_while_recording = enabled;
+    settings::write_settings(&app, settings);
+
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_append_trailing_space_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.append_trailing_space = enabled;
+    settings::write_settings(&app, settings);
+
     Ok(())
 }
 
@@ -231,10 +737,11 @@ fn validate_shortcut_string(raw: &str) -> Result<(), String> {
 /// Temporarily unregister a binding while the user is editing it in the UI.
 /// This avoids firing the action while keys are being recorded.
 #[tauri::command]
+#[specta::specta]
 pub fn suspend_binding(app: AppHandle, id: String) -> Result<(), String> {
     if let Some(b) = settings::get_bindings(&app).get(&id).cloned() {
-        if let Err(e) = _unregister_shortcut(&app, b) {
-            eprintln!("suspend_binding error for id '{}': {}", id, e);
+        if let Err(e) = unregister_shortcut(&app, b) {
+            error!("suspend_binding error for id '{}': {}", id, e);
             return Err(e);
         }
     }
@@ -243,20 +750,62 @@ pub fn suspend_binding(app: AppHandle, id: String) -> Result<(), String> {
 
 /// Re-register the binding after the user has finished editing.
 #[tauri::command]
+#[specta::specta]
 pub fn resume_binding(app: AppHandle, id: String) -> Result<(), String> {
     if let Some(b) = settings::get_bindings(&app).get(&id).cloned() {
-        if let Err(e) = _register_shortcut(&app, b) {
-            eprintln!("resume_binding error for id '{}': {}", id, e);
+        if let Err(e) = register_shortcut(&app, b) {
+            error!("resume_binding error for id '{}': {}", id, e);
             return Err(e);
         }
     }
     Ok(())
 }
 
-fn _register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
+pub fn register_cancel_shortcut(app: &AppHandle) {
+    // Cancel shortcut is disabled on Linux due to instability with dynamic shortcut registration
+    #[cfg(target_os = "linux")]
+    {
+        let _ = app;
+        return;
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let app_clone = app.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Some(cancel_binding) = get_settings(&app_clone).bindings.get("cancel").cloned() {
+                if let Err(e) = register_shortcut(&app_clone, cancel_binding) {
+                    eprintln!("Failed to register cancel shortcut: {}", e);
+                }
+            }
+        });
+    }
+}
+
+pub fn unregister_cancel_shortcut(app: &AppHandle) {
+    // Cancel shortcut is disabled on Linux due to instability with dynamic shortcut registration
+    #[cfg(target_os = "linux")]
+    {
+        let _ = app;
+        return;
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let app_clone = app.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Some(cancel_binding) = get_settings(&app_clone).bindings.get("cancel").cloned() {
+                // We ignore errors here as it might already be unregistered
+                let _ = unregister_shortcut(&app_clone, cancel_binding);
+            }
+        });
+    }
+}
+
+pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
     // Validate human-level rules first
     if let Err(e) = validate_shortcut_string(&binding.current_binding) {
-        eprintln!(
+        warn!(
             "_register_shortcut validation error for binding '{}': {}",
             binding.current_binding, e
         );
@@ -271,7 +820,7 @@ fn _register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), S
                 "Failed to parse shortcut '{}': {}",
                 binding.current_binding, e
             );
-            eprintln!("_register_shortcut parse error: {}", error_msg);
+            error!("_register_shortcut parse error: {}", error_msg);
             return Err(error_msg);
         }
     };
@@ -279,7 +828,7 @@ fn _register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), S
     // Prevent duplicate registrations that would silently shadow one another
     if app.global_shortcut().is_registered(shortcut) {
         let error_msg = format!("Shortcut '{}' is already in use", binding.current_binding);
-        eprintln!("_register_shortcut duplicate error: {}", error_msg);
+        warn!("_register_shortcut duplicate error: {}", error_msg);
         return Err(error_msg);
     }
 
@@ -293,7 +842,13 @@ fn _register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), S
                 let settings = get_settings(ah);
 
                 if let Some(action) = ACTION_MAP.get(&binding_id_for_closure) {
-                    if settings.push_to_talk {
+                    if binding_id_for_closure == "cancel" {
+                        let audio_manager = ah.state::<Arc<AudioRecordingManager>>();
+                        if audio_manager.is_recording() && event.state == ShortcutState::Pressed {
+                            action.start(ah, &binding_id_for_closure, &shortcut_string);
+                        }
+                        return;
+                    } else if settings.push_to_talk {
                         if event.state == ShortcutState::Pressed {
                             action.start(ah, &binding_id_for_closure, &shortcut_string);
                         } else if event.state == ShortcutState::Released {
@@ -323,8 +878,8 @@ fn _register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), S
                         }
                     }
                 } else {
-                    println!(
-                        "Warning: No action defined in ACTION_MAP for shortcut ID '{}'. Shortcut: '{}', State: {:?}",
+                    warn!(
+                        "No action defined in ACTION_MAP for shortcut ID '{}'. Shortcut: '{}', State: {:?}",
                         binding_id_for_closure, shortcut_string, event.state
                     );
                 }
@@ -332,14 +887,14 @@ fn _register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), S
         })
         .map_err(|e| {
             let error_msg = format!("Couldn't register shortcut '{}': {}", binding.current_binding, e);
-            eprintln!("_register_shortcut registration error: {}", error_msg);
+            error!("_register_shortcut registration error: {}", error_msg);
             error_msg
         })?;
 
     Ok(())
 }
 
-fn _unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
+pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
     let shortcut = match binding.current_binding.parse::<Shortcut>() {
         Ok(s) => s,
         Err(e) => {
@@ -347,7 +902,7 @@ fn _unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(),
                 "Failed to parse shortcut '{}' for unregistration: {}",
                 binding.current_binding, e
             );
-            eprintln!("_unregister_shortcut parse error: {}", error_msg);
+            error!("_unregister_shortcut parse error: {}", error_msg);
             return Err(error_msg);
         }
     };
@@ -357,7 +912,7 @@ fn _unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(),
             "Failed to unregister shortcut '{}': {}",
             binding.current_binding, e
         );
-        eprintln!("_unregister_shortcut error: {}", error_msg);
+        error!("_unregister_shortcut error: {}", error_msg);
         error_msg
     })?;
 

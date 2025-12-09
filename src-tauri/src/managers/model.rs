@@ -2,7 +2,9 @@ use crate::settings::{get_settings, write_settings};
 use anyhow::Result;
 use flate2::read::GzDecoder;
 use futures_util::StreamExt;
+use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
@@ -10,23 +12,23 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tar::Archive;
-use tauri::{App, AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Type)]
 pub enum EngineType {
     Whisper,
     Parakeet,
     RemoteWhisper,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct RemoteModelConfig {
     pub api_url: String,
     pub api_key: Option<String>,
     pub model_name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ModelInfo {
     pub id: String,
     pub name: String,
@@ -40,9 +42,11 @@ pub struct ModelInfo {
     pub is_directory: bool,
     pub engine_type: EngineType,
     pub remote_config: Option<RemoteModelConfig>,
+    pub accuracy_score: f32, // 0.0 to 1.0, higher is more accurate
+    pub speed_score: f32,    // 0.0 to 1.0, higher is faster
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct DownloadProgress {
     pub model_id: String,
     pub downloaded: u64,
@@ -57,11 +61,9 @@ pub struct ModelManager {
 }
 
 impl ModelManager {
-    pub fn new(app: &App) -> Result<Self> {
-        let app_handle = app.app_handle().clone();
-
+    pub fn new(app_handle: &AppHandle) -> Result<Self> {
         // Create models directory in app data
-        let models_dir = app
+        let models_dir = app_handle
             .path()
             .app_data_dir()
             .map_err(|e| anyhow::anyhow!("Failed to get app data dir: {}", e))?
@@ -73,6 +75,7 @@ impl ModelManager {
 
         let mut available_models = HashMap::new();
 
+        // TODO this should be read from a JSON file or something..
         available_models.insert(
             "small".to_string(),
             ModelInfo {
@@ -81,13 +84,15 @@ impl ModelManager {
                 description: "Fast and fairly accurate.".to_string(),
                 filename: "ggml-small.bin".to_string(),
                 url: Some("https://blob.handy.computer/ggml-small.bin".to_string()),
-                size_mb: 244,
+                size_mb: 487,
                 is_downloaded: false,
                 is_downloading: false,
                 partial_size: 0,
                 is_directory: false,
                 engine_type: EngineType::Whisper,
                 remote_config: None,
+                accuracy_score: 0.60,
+                speed_score: 0.85,
             },
         );
 
@@ -100,13 +105,15 @@ impl ModelManager {
                 description: "Good accuracy, medium speed".to_string(),
                 filename: "whisper-medium-q4_1.bin".to_string(),
                 url: Some("https://blob.handy.computer/whisper-medium-q4_1.bin".to_string()),
-                size_mb: 491, // Approximate size
+                size_mb: 492, // Approximate size
                 is_downloaded: false,
                 is_downloading: false,
                 partial_size: 0,
                 is_directory: false,
                 engine_type: EngineType::Whisper,
                 remote_config: None,
+                accuracy_score: 0.75,
+                speed_score: 0.60,
             },
         );
 
@@ -125,6 +132,8 @@ impl ModelManager {
                 is_directory: false,
                 engine_type: EngineType::Whisper,
                 remote_config: None,
+                accuracy_score: 0.80,
+                speed_score: 0.40,
             },
         );
 
@@ -136,17 +145,39 @@ impl ModelManager {
                 description: "Good accuracy, but slow.".to_string(),
                 filename: "ggml-large-v3-q5_0.bin".to_string(),
                 url: Some("https://blob.handy.computer/ggml-large-v3-q5_0.bin".to_string()),
-                size_mb: 1080, // Approximate size
+                size_mb: 1100, // Approximate size
                 is_downloaded: false,
                 is_downloading: false,
                 partial_size: 0,
                 is_directory: false,
                 engine_type: EngineType::Whisper,
                 remote_config: None,
+                accuracy_score: 0.85,
+                speed_score: 0.30,
             },
         );
 
-        // Add NVIDIA Parakeet model (directory-based)
+        // Add NVIDIA Parakeet models (directory-based)
+        available_models.insert(
+            "parakeet-tdt-0.6b-v2".to_string(),
+            ModelInfo {
+                id: "parakeet-tdt-0.6b-v2".to_string(),
+                name: "Parakeet V2".to_string(),
+                description: "English only. The best model for English speakers.".to_string(),
+                filename: "parakeet-tdt-0.6b-v2-int8".to_string(), // Directory name
+                url: Some("https://blob.handy.computer/parakeet-v2-int8.tar.gz".to_string()),
+                size_mb: 473, // Approximate size for int8 quantized model
+                is_downloaded: false,
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: true,
+                engine_type: EngineType::Parakeet,
+                remote_config: None,
+                accuracy_score: 0.85,
+                speed_score: 0.85,
+            },
+        );
+
         available_models.insert(
             "parakeet-tdt-0.6b-v3".to_string(),
             ModelInfo {
@@ -155,13 +186,15 @@ impl ModelManager {
                 description: "Fast and accurate".to_string(),
                 filename: "parakeet-tdt-0.6b-v3-int8".to_string(), // Directory name
                 url: Some("https://blob.handy.computer/parakeet-v3-int8.tar.gz".to_string()),
-                size_mb: 850, // Approximate size for int8 quantized model
+                size_mb: 478, // Approximate size for int8 quantized model
                 is_downloaded: false,
                 is_downloading: false,
                 partial_size: 0,
                 is_directory: true,
                 engine_type: EngineType::Parakeet,
                 remote_config: None,
+                accuracy_score: 0.80,
+                speed_score: 0.85,
             },
         );
 
@@ -237,9 +270,9 @@ impl ModelManager {
 
                     // Only copy if user doesn't already have the model
                     if !user_path.exists() {
-                        println!("Migrating bundled model {} to user directory", filename);
+                        info!("Migrating bundled model {} to user directory", filename);
                         fs::copy(&bundled_path, &user_path)?;
-                        println!("Successfully migrated {}", filename);
+                        info!("Successfully migrated {}", filename);
                     }
                 }
             }
@@ -262,12 +295,12 @@ impl ModelManager {
 
                 // Clean up any leftover .extracting directories from interrupted extractions
                 if extracting_path.exists() {
-                    println!("Cleaning up interrupted extraction for model: {}", model.id);
+                    warn!("Cleaning up interrupted extraction for model: {}", model.id);
                     let _ = fs::remove_dir_all(&extracting_path);
                 }
 
                 model.is_downloaded = model_path.exists() && model_path.is_dir();
-                model.is_downloading = partial_path.exists();
+                model.is_downloading = false;
 
                 // Get partial file size if it exists (for the .tar.gz being downloaded)
                 if partial_path.exists() {
@@ -281,7 +314,7 @@ impl ModelManager {
                 let partial_path = self.models_dir.join(format!("{}.partial", &model.filename));
 
                 model.is_downloaded = model_path.exists();
-                model.is_downloading = partial_path.exists();
+                model.is_downloading = false;
 
                 // Get partial file size if it exists
                 if partial_path.exists() {
@@ -304,7 +337,7 @@ impl ModelManager {
             // Find the first available (downloaded) model
             let models = self.available_models.lock().unwrap();
             if let Some(available_model) = models.values().find(|model| model.is_downloaded) {
-                println!(
+                info!(
                     "Auto-selecting model: {} ({})",
                     available_model.id, available_model.name
                 );
@@ -314,7 +347,7 @@ impl ModelManager {
                 updated_settings.selected_model = available_model.id.clone();
                 write_settings(&self.app_handle, updated_settings);
 
-                println!("Successfully auto-selected model: {}", available_model.id);
+                info!("Successfully auto-selected model: {}", available_model.id);
             }
         }
 
@@ -349,12 +382,12 @@ impl ModelManager {
         }
 
         // Check if we have a partial download to resume
-        let resume_from = if partial_path.exists() {
+        let mut resume_from = if partial_path.exists() {
             let size = partial_path.metadata()?.len();
-            println!("Resuming download of model {} from byte {}", model_id, size);
+            info!("Resuming download of model {} from byte {}", model_id, size);
             size
         } else {
-            println!("Starting fresh download of model {} from {}", model_id, url);
+            info!("Starting fresh download of model {} from {}", model_id, url);
             0
         };
 
@@ -374,7 +407,25 @@ impl ModelManager {
             request = request.header("Range", format!("bytes={}-", resume_from));
         }
 
-        let response = request.send().await?;
+        let mut response = request.send().await?;
+
+        // If we tried to resume but server returned 200 (not 206 Partial Content),
+        // the server doesn't support range requests. Delete partial file and restart
+        // fresh to avoid file corruption (appending full file to partial).
+        if resume_from > 0 && response.status() == reqwest::StatusCode::OK {
+            warn!(
+                "Server doesn't support range requests for model {}, restarting download",
+                model_id
+            );
+            drop(response);
+            let _ = fs::remove_file(&partial_path);
+
+            // Reset resume_from since we're starting fresh
+            resume_from = 0;
+
+            // Restart download without range header
+            response = client.get(&url).send().await?;
+        }
 
         // Check for success or partial content status
         if !response.status().is_success()
@@ -464,11 +515,31 @@ impl ModelManager {
         file.flush()?;
         drop(file); // Ensure file is closed before moving
 
+        // Verify downloaded file size matches expected size
+        if total_size > 0 {
+            let actual_size = partial_path.metadata()?.len();
+            if actual_size != total_size {
+                // Download is incomplete/corrupted - delete partial and return error
+                let _ = fs::remove_file(&partial_path);
+                {
+                    let mut models = self.available_models.lock().unwrap();
+                    if let Some(model) = models.get_mut(model_id) {
+                        model.is_downloading = false;
+                    }
+                }
+                return Err(anyhow::anyhow!(
+                    "Download incomplete: expected {} bytes, got {} bytes",
+                    total_size,
+                    actual_size
+                ));
+            }
+        }
+
         // Handle directory-based models (extract tar.gz) vs file-based models
         if model_info.is_directory {
             // Emit extraction started event
             let _ = self.app_handle.emit("model-extraction-started", model_id);
-            println!("Extracting archive for directory-based model: {}", model_id);
+            info!("Extracting archive for directory-based model: {}", model_id);
 
             // Use a temporary extraction directory to ensure atomic operations
             let temp_extract_dir = self
@@ -527,7 +598,7 @@ impl ModelManager {
                 fs::rename(&temp_extract_dir, &final_model_dir)?;
             }
 
-            println!("Successfully extracted archive for model: {}", model_id);
+            info!("Successfully extracted archive for model: {}", model_id);
             // Emit extraction completed event
             let _ = self.app_handle.emit("model-extraction-completed", model_id);
 
@@ -551,7 +622,7 @@ impl ModelManager {
         // Emit completion event
         let _ = self.app_handle.emit("model-download-complete", model_id);
 
-        println!(
+        info!(
             "Successfully downloaded model {} to {:?}",
             model_id, model_path
         );
@@ -560,7 +631,7 @@ impl ModelManager {
     }
 
     pub fn delete_model(&self, model_id: &str) -> Result<()> {
-        println!("ModelManager: delete_model called for: {}", model_id);
+        debug!("ModelManager: delete_model called for: {}", model_id);
 
         let model_info = {
             let models = self.available_models.lock().unwrap();
@@ -570,43 +641,40 @@ impl ModelManager {
         let model_info =
             model_info.ok_or_else(|| anyhow::anyhow!("Model not found: {}", model_id))?;
 
-        println!("ModelManager: Found model info: {:?}", model_info);
+        debug!("ModelManager: Found model info: {:?}", model_info);
 
         let model_path = self.models_dir.join(&model_info.filename);
         let partial_path = self
             .models_dir
             .join(format!("{}.partial", &model_info.filename));
-        println!("ModelManager: Model path: {:?}", model_path);
-        println!("ModelManager: Partial path: {:?}", partial_path);
+        debug!("ModelManager: Model path: {:?}", model_path);
+        debug!("ModelManager: Partial path: {:?}", partial_path);
 
         let mut deleted_something = false;
 
         if model_info.is_directory {
             // Delete complete model directory if it exists
             if model_path.exists() && model_path.is_dir() {
-                println!(
-                    "ModelManager: Deleting model directory at: {:?}",
-                    model_path
-                );
+                info!("Deleting model directory at: {:?}", model_path);
                 fs::remove_dir_all(&model_path)?;
-                println!("ModelManager: Model directory deleted successfully");
+                info!("Model directory deleted successfully");
                 deleted_something = true;
             }
         } else {
             // Delete complete model file if it exists
             if model_path.exists() {
-                println!("ModelManager: Deleting model file at: {:?}", model_path);
+                info!("Deleting model file at: {:?}", model_path);
                 fs::remove_file(&model_path)?;
-                println!("ModelManager: Model file deleted successfully");
+                info!("Model file deleted successfully");
                 deleted_something = true;
             }
         }
 
         // Delete partial file if it exists (same for both types)
         if partial_path.exists() {
-            println!("ModelManager: Deleting partial file at: {:?}", partial_path);
+            info!("Deleting partial file at: {:?}", partial_path);
             fs::remove_file(&partial_path)?;
-            println!("ModelManager: Partial file deleted successfully");
+            info!("Partial file deleted successfully");
             deleted_something = true;
         }
 
@@ -616,7 +684,7 @@ impl ModelManager {
 
         // Update download status
         self.update_download_status()?;
-        println!("ModelManager: Download status updated");
+        debug!("ModelManager: download status updated");
 
         Ok(())
     }
@@ -667,7 +735,7 @@ impl ModelManager {
     }
 
     pub fn cancel_download(&self, model_id: &str) -> Result<()> {
-        println!("ModelManager: cancel_download called for: {}", model_id);
+        debug!("ModelManager: cancel_download called for: {}", model_id);
 
         let _model_info = {
             let models = self.available_models.lock().unwrap();
@@ -692,7 +760,7 @@ impl ModelManager {
         // Update download status to reflect current state
         self.update_download_status()?;
 
-        println!("ModelManager: Download cancelled for: {}", model_id);
+        info!("Download cancelled for: {}", model_id);
         Ok(())
     }
 

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { SettingsGroup } from "../ui/SettingsGroup";
-import { SettingContainer } from "../ui/SettingContainer";
-import { Button } from "../ui/Button";
+import { SettingsGroup } from "../../ui/SettingsGroup";
+import { SettingContainer } from "../../ui/SettingContainer";
+import { Button } from "../../ui/Button";
+import { AppDataDirectory } from "../AppDataDirectory";
 
 export const AboutSettings: React.FC = () => {
   const [version, setVersion] = useState("");
@@ -39,6 +40,22 @@ export const AboutSettings: React.FC = () => {
           grouped={true}
         >
           <span className="text-sm font-mono">v{version}</span>
+        </SettingContainer>
+
+        <AppDataDirectory descriptionMode="tooltip" grouped={true} />
+
+        <SettingContainer
+          title="Source Code"
+          description="View source code and contribute"
+          grouped={true}
+        >
+          <Button
+            variant="secondary"
+            size="md"
+            onClick={() => openUrl("https://github.com/cjpais/Handy")}
+          >
+            View on GitHub
+          </Button>
         </SettingContainer>
 
         <SettingContainer

@@ -11,6 +11,8 @@ interface LanguageSelectorProps {
   grouped?: boolean;
 }
 
+const unsupportedModels = ["parakeet-tdt-0.6b-v2", "parakeet-tdt-0.6b-v3"];
+
 export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
   descriptionMode = "tooltip",
   grouped = false,
@@ -23,8 +25,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const selectedLanguage = getSetting("selected_language") || "auto";
-  const isParakeetModel = currentModel === "parakeet-tdt-0.6b-v3";
-  const isLanguageSelectionDisabled = isParakeetModel;
+  const isUnsupported = unsupportedModels.includes(currentModel);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -61,15 +62,17 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
   }, [isOpen]);
 
   const filteredLanguages = useMemo(
-    () => LANGUAGES.filter((language) =>
-      language.label.toLowerCase().includes(searchQuery.toLowerCase()),
-    ),
-    [searchQuery]
+    () =>
+      LANGUAGES.filter((language) =>
+        language.label.toLowerCase().includes(searchQuery.toLowerCase()),
+      ),
+    [searchQuery],
   );
 
-  const selectedLanguageName = isParakeetModel 
-    ? "Auto" 
-    : LANGUAGES.find((lang) => lang.value === selectedLanguage)?.label || "Auto";
+  const selectedLanguageName = isUnsupported
+    ? "Auto"
+    : LANGUAGES.find((lang) => lang.value === selectedLanguage)?.label ||
+      "Auto";
 
   const handleLanguageSelect = async (languageCode: string) => {
     await updateSetting("selected_language", languageCode);
@@ -82,7 +85,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
   };
 
   const handleToggle = () => {
-    if (isUpdating("selected_language") || isLanguageSelectionDisabled) return;
+    if (isUpdating("selected_language") || isUnsupported) return;
     setIsOpen(!isOpen);
   };
 
@@ -103,24 +106,26 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
   return (
     <SettingContainer
       title="Language"
-      description={isParakeetModel 
-        ? "Parakeet model automatically detects the language. No manual selection is needed."
-        : "Select the language for speech recognition. Auto will automatically determine the language, while selecting a specific language can improve accuracy for that language."
+      description={
+        isUnsupported
+          ? "Parakeet model automatically detects the language. No manual selection is needed."
+          : "Select the language for speech recognition. Auto will automatically determine the language, while selecting a specific language can improve accuracy for that language."
       }
       descriptionMode={descriptionMode}
       grouped={grouped}
+      disabled={isUnsupported}
     >
       <div className="flex items-center space-x-1">
         <div className="relative" ref={dropdownRef}>
           <button
             type="button"
             className={`px-2 py-1 text-sm font-semibold bg-mid-gray/10 border border-mid-gray/80 rounded min-w-[200px] text-left flex items-center justify-between transition-all duration-150 ${
-              isUpdating("selected_language") || isLanguageSelectionDisabled
+              isUpdating("selected_language") || isUnsupported
                 ? "opacity-50 cursor-not-allowed"
                 : "hover:bg-logo-primary/10 cursor-pointer hover:border-logo-primary"
             }`}
             onClick={handleToggle}
-            disabled={isUpdating("selected_language") || isLanguageSelectionDisabled}
+            disabled={isUpdating("selected_language") || isUnsupported}
           >
             <span className="truncate">{selectedLanguageName}</span>
             <svg
@@ -140,7 +145,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
             </svg>
           </button>
 
-          {isOpen && !isUpdating("selected_language") && !isLanguageSelectionDisabled && (
+          {isOpen && !isUpdating("selected_language") && !isUnsupported && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-background border border-mid-gray/80 rounded shadow-lg z-50 max-h-60 overflow-hidden">
               {/* Search input */}
               <div className="p-2 border-b border-mid-gray/80">
@@ -184,7 +189,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
         </div>
         <ResetButton
           onClick={handleReset}
-          disabled={isUpdating("selected_language") || isLanguageSelectionDisabled}
+          disabled={isUpdating("selected_language") || isUnsupported}
         />
       </div>
       {isUpdating("selected_language") && (

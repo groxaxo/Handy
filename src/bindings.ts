@@ -431,6 +431,22 @@ async getRecommendedFirstModel() : Promise<Result<string, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async addRemoteModel(id: string, name: string, description: string, apiUrl: string, apiKey: string | null, modelName: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("add_remote_model", { id, name, description, apiUrl, apiKey, modelName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async removeRemoteModel(modelId: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remove_remote_model", { modelId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async updateMicrophoneMode(alwaysOn: boolean) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("update_microphone_mode", { alwaysOn }) };
@@ -615,11 +631,12 @@ export type AudioDevice = { index: string; name: string; is_default: boolean }
 export type BindingResponse = { success: boolean; binding: ShortcutBinding | null; error: string | null }
 export type ClipboardHandling = "dont_modify" | "copy_to_clipboard"
 export type CustomSounds = { start: boolean; stop: boolean }
-export type EngineType = "Whisper" | "Parakeet"
+export type EngineType = "Whisper" | "Parakeet" | "RemoteWhisper"
 export type HistoryEntry = { id: string; file_name: string; timestamp: string; saved: boolean; title: string; transcription_text: string; post_processed_text: string | null; post_process_prompt: string | null }
 export type LLMPrompt = { id: string; name: string; prompt: string }
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error"
-export type ModelInfo = { id: string; name: string; description: string; filename: string; url: string | null; size_mb: string; is_downloaded: boolean; is_downloading: boolean; partial_size: string; is_directory: boolean; engine_type: EngineType; accuracy_score: number; speed_score: number }
+export type RemoteModelConfig = { api_url: string; api_key: string | null; model_name: string }
+export type ModelInfo = { id: string; name: string; description: string; filename: string; url: string | null; size_mb: string; is_downloaded: boolean; is_downloading: boolean; partial_size: string; is_directory: boolean; engine_type: EngineType; remote_config: RemoteModelConfig | null; accuracy_score: number; speed_score: number }
 export type ModelLoadStatus = { is_loaded: boolean; current_model: string | null }
 export type ModelUnloadTimeout = "never" | "immediately" | "min_2" | "min_5" | "min_10" | "min_15" | "hour_1" | "sec_5"
 export type OverlayPosition = "none" | "top" | "bottom"

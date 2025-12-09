@@ -139,6 +139,7 @@ pub async fn get_recommended_first_model() -> Result<String, String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn add_remote_model(
     model_manager: State<'_, Arc<ModelManager>>,
     id: String,
@@ -160,6 +161,7 @@ pub async fn add_remote_model(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn remove_remote_model(
     model_manager: State<'_, Arc<ModelManager>>,
     model_id: String,

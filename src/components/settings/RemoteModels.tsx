@@ -1,10 +1,10 @@
 import React, { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "../../bindings";
 import { SettingContainer } from "../ui/SettingContainer";
 import { Input } from "../ui/Input";
 import { Button } from "../ui/Button";
 import { useModels } from "../../hooks/useModels";
-import type { ModelInfo } from "../../lib/types";
+import type { ModelInfo } from "../../bindings";
 
 interface RemoteModelFormData {
   id: string;
@@ -38,14 +38,19 @@ export const RemoteModels: React.FC<{
     setError("");
 
     try {
-      await invoke("add_remote_model", {
-        id: formData.id,
-        name: formData.name,
-        description: formData.description,
-        apiUrl: formData.api_url,
-        apiKey: formData.api_key || null,
-        modelName: formData.model_name,
-      });
+      const result = await commands.addRemoteModel(
+        formData.id,
+        formData.name,
+        formData.description,
+        formData.api_url,
+        formData.api_key || null,
+        formData.model_name
+      );
+
+      if (result.status === "error") {
+        setError(result.error);
+        return;
+      }
 
       // Reset form
       setFormData({
@@ -65,7 +70,11 @@ export const RemoteModels: React.FC<{
 
   const handleRemove = async (modelId: string) => {
     try {
-      await invoke("remove_remote_model", { modelId });
+      const result = await commands.removeRemoteModel(modelId);
+      if (result.status === "error") {
+        console.error("Failed to remove remote model:", result.error);
+        return;
+      }
       await refreshModels();
     } catch (err) {
       console.error("Failed to remove remote model:", err);

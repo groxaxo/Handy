@@ -1,19 +1,6 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-
-interface ModelInfo {
-  id: string;
-  name: string;
-  description: string;
-  filename: string;
-  url?: string;
-  size_mb: number;
-  is_downloaded: boolean;
-  is_downloading: boolean;
-  partial_size: number;
-  is_directory: boolean;
-}
+import { commands, type ModelInfo } from "@/bindings";
 
 interface DownloadProgress {
   model_id: string;
@@ -41,9 +28,13 @@ export const useModels = () => {
 
   const loadModels = async () => {
     try {
-      const modelList = await invoke<ModelInfo[]>("get_available_models");
-      setModels(modelList);
-      setError(null);
+      const result = await commands.getAvailableModels();
+      if (result.status === "ok") {
+        setModels(result.data);
+        setError(null);
+      } else {
+        setError(`Failed to load models: ${result.error}`);
+      }
     } catch (err) {
       setError(`Failed to load models: ${err}`);
     } finally {
@@ -53,8 +44,10 @@ export const useModels = () => {
 
   const loadCurrentModel = async () => {
     try {
-      const current = await invoke<string>("get_current_model");
-      setCurrentModel(current);
+      const result = await commands.getCurrentModel();
+      if (result.status === "ok") {
+        setCurrentModel(result.data);
+      }
     } catch (err) {
       console.error("Failed to load current model:", err);
     }
@@ -62,10 +55,14 @@ export const useModels = () => {
 
   const checkFirstRun = async () => {
     try {
-      const hasModels = await invoke<boolean>("has_any_models_available");
-      setHasAnyModels(hasModels);
-      setIsFirstRun(!hasModels);
-      return !hasModels;
+      const result = await commands.hasAnyModelsAvailable();
+      if (result.status === "ok") {
+        const hasModels = result.data;
+        setHasAnyModels(hasModels);
+        setIsFirstRun(!hasModels);
+        return !hasModels;
+      }
+      return false;
     } catch (err) {
       console.error("Failed to check model availability:", err);
       return false;
@@ -75,11 +72,16 @@ export const useModels = () => {
   const selectModel = async (modelId: string) => {
     try {
       setError(null);
-      await invoke("set_active_model", { modelId });
-      setCurrentModel(modelId);
-      setIsFirstRun(false);
-      setHasAnyModels(true);
-      return true;
+      const result = await commands.setActiveModel(modelId);
+      if (result.status === "ok") {
+        setCurrentModel(modelId);
+        setIsFirstRun(false);
+        setHasAnyModels(true);
+        return true;
+      } else {
+        setError(`Failed to switch to model: ${result.error}`);
+        return false;
+      }
     } catch (err) {
       setError(`Failed to switch to model: ${err}`);
       return false;
@@ -90,8 +92,18 @@ export const useModels = () => {
     try {
       setError(null);
       setDownloadingModels((prev) => new Set(prev.add(modelId)));
-      await invoke("download_model", { modelId });
-      return true;
+      const result = await commands.downloadModel(modelId);
+      if (result.status === "ok") {
+        return true;
+      } else {
+        setError(`Failed to download model: ${result.error}`);
+        setDownloadingModels((prev) => {
+          const next = new Set(prev);
+          next.delete(modelId);
+          return next;
+        });
+        return false;
+      }
     } catch (err) {
       setError(`Failed to download model: ${err}`);
       setDownloadingModels((prev) => {
@@ -106,9 +118,14 @@ export const useModels = () => {
   const deleteModel = async (modelId: string) => {
     try {
       setError(null);
-      await invoke("delete_model", { modelId });
-      await loadModels(); // Refresh the list
-      return true;
+      const result = await commands.deleteModel(modelId);
+      if (result.status === "ok") {
+        await loadModels(); // Refresh the list
+        return true;
+      } else {
+        setError(`Failed to delete model: ${result.error}`);
+        return false;
+      }
     } catch (err) {
       setError(`Failed to delete model: ${err}`);
       return false;
@@ -178,7 +195,7 @@ export const useModels = () => {
     );
 
     const extractionCompletedUnlisten = listen<string>(
-      "model-extraction-completed", 
+      "model-extraction-completed",
       (event) => {
         const modelId = event.payload;
         setExtractingModels((prev) => {
@@ -191,18 +208,18 @@ export const useModels = () => {
       },
     );
 
-    const extractionFailedUnlisten = listen<{model_id: string, error: string}>(
-      "model-extraction-failed",
-      (event) => {
-        const modelId = event.payload.model_id;
-        setExtractingModels((prev) => {
-          const next = new Set(prev);
-          next.delete(modelId);
-          return next;
-        });
-        setError(`Failed to extract model: ${event.payload.error}`);
-      },
-    );
+    const extractionFailedUnlisten = listen<{
+      model_id: string;
+      error: string;
+    }>("model-extraction-failed", (event) => {
+      const modelId = event.payload.model_id;
+      setExtractingModels((prev) => {
+        const next = new Set(prev);
+        next.delete(modelId);
+        return next;
+      });
+      setError(`Failed to extract model: ${event.payload.error}`);
+    });
 
     return () => {
       progressUnlisten.then((fn) => fn());

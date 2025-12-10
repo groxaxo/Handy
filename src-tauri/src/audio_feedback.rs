@@ -1,73 +1,105 @@
-use crate::settings;
+use crate::settings::SoundTheme;
+use crate::settings::{self, AppSettings};
 use cpal::traits::{DeviceTrait, HostTrait};
+use log::{debug, error, warn};
 use rodio::OutputStreamBuilder;
 use std::fs::File;
 use std::io::BufReader;
+use std::path::{Path, PathBuf};
 use std::thread;
 use tauri::{AppHandle, Manager};
 
-/// Plays an audio resource from the resources directory.
-/// Checks if audio feedback is enabled in settings before playing.
-pub fn play_sound(app: &AppHandle, resource_path: &str) {
-    // Check if audio feedback is enabled
+pub enum SoundType {
+    Start,
+    Stop,
+}
+
+fn resolve_sound_path(
+    app: &AppHandle,
+    settings: &AppSettings,
+    sound_type: SoundType,
+) -> Option<PathBuf> {
+    let sound_file = get_sound_path(settings, sound_type);
+    let base_dir = get_sound_base_dir(settings);
+    app.path().resolve(&sound_file, base_dir).ok()
+}
+
+fn get_sound_path(settings: &AppSettings, sound_type: SoundType) -> String {
+    match (settings.sound_theme, sound_type) {
+        (SoundTheme::Custom, SoundType::Start) => "custom_start.wav".to_string(),
+        (SoundTheme::Custom, SoundType::Stop) => "custom_stop.wav".to_string(),
+        (_, SoundType::Start) => settings.sound_theme.to_start_path(),
+        (_, SoundType::Stop) => settings.sound_theme.to_stop_path(),
+    }
+}
+
+fn get_sound_base_dir(settings: &AppSettings) -> tauri::path::BaseDirectory {
+    match settings.sound_theme {
+        SoundTheme::Custom => tauri::path::BaseDirectory::AppData,
+        _ => tauri::path::BaseDirectory::Resource,
+    }
+}
+
+pub fn play_feedback_sound(app: &AppHandle, sound_type: SoundType) {
     let settings = settings::get_settings(app);
     if !settings.audio_feedback {
         return;
     }
+    if let Some(path) = resolve_sound_path(app, &settings, sound_type) {
+        play_sound_async(app, path);
+    }
+}
 
+pub fn play_feedback_sound_blocking(app: &AppHandle, sound_type: SoundType) {
+    let settings = settings::get_settings(app);
+    if !settings.audio_feedback {
+        return;
+    }
+    if let Some(path) = resolve_sound_path(app, &settings, sound_type) {
+        play_sound_blocking(app, &path);
+    }
+}
+
+pub fn play_test_sound(app: &AppHandle, sound_type: SoundType) {
+    let settings = settings::get_settings(app);
+    if let Some(path) = resolve_sound_path(app, &settings, sound_type) {
+        play_sound_blocking(app, &path);
+    }
+}
+
+fn play_sound_async(app: &AppHandle, path: PathBuf) {
     let app_handle = app.clone();
-    let resource_path = resource_path.to_string();
-
-    // Spawn a new thread to play the audio without blocking the main thread
     thread::spawn(move || {
-        // Get the path to the audio file in resources
-        let audio_path = match app_handle
-            .path()
-            .resolve(&resource_path, tauri::path::BaseDirectory::Resource)
-        {
-            Ok(path) => path.to_path_buf(),
-            Err(e) => {
-                eprintln!(
-                    "Failed to resolve audio file path '{}': {}",
-                    resource_path, e
-                );
-                return;
-            }
-        };
-
-        // Get the selected output device from settings
-        let settings = settings::get_settings(&app_handle);
-        let selected_device = settings.selected_output_device.clone();
-
-        // Try to play the audio file
-        if let Err(e) = play_audio_file(&audio_path, selected_device) {
-            eprintln!("Failed to play sound '{}': {}", resource_path, e);
+        if let Err(e) = play_sound_at_path(&app_handle, path.as_path()) {
+            error!("Failed to play sound '{}': {}", path.display(), e);
         }
     });
 }
 
-/// Convenience function to play the recording start sound
-pub fn play_recording_start_sound(app: &AppHandle) {
-    play_sound(app, "resources/rec_start.wav");
+fn play_sound_blocking(app: &AppHandle, path: &Path) {
+    if let Err(e) = play_sound_at_path(app, path) {
+        error!("Failed to play sound '{}': {}", path.display(), e);
+    }
 }
 
-/// Convenience function to play the recording stop sound
-pub fn play_recording_stop_sound(app: &AppHandle) {
-    play_sound(app, "resources/rec_stop.wav");
+fn play_sound_at_path(app: &AppHandle, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let settings = settings::get_settings(app);
+    let volume = settings.audio_feedback_volume;
+    let selected_device = settings.selected_output_device.clone();
+    play_audio_file(path, selected_device, volume)
 }
 
 fn play_audio_file(
     path: &std::path::Path,
     selected_device: Option<String>,
+    volume: f32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let stream_builder = if let Some(device_name) = selected_device {
         if device_name == "Default" {
-            println!("Using default device");
-            // Use default device
+            debug!("Using default device");
             OutputStreamBuilder::from_default_device()?
         } else {
-            // Try to find the device by name
-            let host = cpal::default_host();
+            let host = crate::audio_toolkit::get_cpal_host();
             let devices = host.output_devices()?;
 
             let mut found_device = None;
@@ -81,25 +113,24 @@ fn play_audio_file(
             match found_device {
                 Some(device) => OutputStreamBuilder::from_device(device)?,
                 None => {
-                    eprintln!("Device '{}' not found, using default device", device_name);
+                    warn!("Device '{}' not found, using default device", device_name);
                     OutputStreamBuilder::from_default_device()?
                 }
             }
         }
     } else {
-        println!("Using default device");
-        // Use default device
+        debug!("Using default device");
         OutputStreamBuilder::from_default_device()?
     };
 
     let stream_handle = stream_builder.open_stream()?;
     let mixer = stream_handle.mixer();
 
-    // Load the audio file
     let file = File::open(path)?;
     let buf_reader = BufReader::new(file);
 
     let sink = rodio::play(mixer, buf_reader)?;
+    sink.set_volume(volume);
     sink.sleep_until_end();
 
     Ok(())

@@ -62,7 +62,7 @@ impl AudioRecorder {
         let (sample_tx, sample_rx) = mpsc::channel::<Vec<f32>>();
         let (cmd_tx, cmd_rx) = mpsc::channel::<Cmd>();
 
-        let host = cpal::default_host();
+        let host = crate::audio_toolkit::get_cpal_host();
         let device = match device {
             Some(dev) => dev,
             None => host
@@ -82,7 +82,7 @@ impl AudioRecorder {
             let sample_rate = config.sample_rate().0;
             let channels = config.channels() as usize;
 
-            println!(
+            log::info!(
                 "Using device: {:?}\nSample rate: {}\nChannels: {}\nFormat: {:?}",
                 thread_device.name(),
                 sample_rate,
@@ -188,14 +188,14 @@ impl AudioRecorder {
             }
 
             if sample_tx.send(output_buffer.clone()).is_err() {
-                eprintln!("Failed to send samples");
+                log::error!("Failed to send samples");
             }
         };
 
         device.build_input_stream(
             &config.clone().into(),
             stream_cb,
-            |err| eprintln!("Stream error: {}", err),
+            |err| log::error!("Stream error: {}", err),
             None,
         )
     }
@@ -204,17 +204,34 @@ impl AudioRecorder {
         device: &cpal::Device,
     ) -> Result<cpal::SupportedStreamConfig, Box<dyn std::error::Error>> {
         let supported_configs = device.supported_input_configs()?;
+        let mut best_config: Option<cpal::SupportedStreamConfigRange> = None;
 
-        // Try to find a config that supports 16kHz
+        // Try to find a config that supports 16kHz, prioritizing better formats
         for config_range in supported_configs {
             if config_range.min_sample_rate().0 <= constants::WHISPER_SAMPLE_RATE
                 && config_range.max_sample_rate().0 >= constants::WHISPER_SAMPLE_RATE
             {
-                // Found a config that supports 16kHz, use it
-                return Ok(
-                    config_range.with_sample_rate(cpal::SampleRate(constants::WHISPER_SAMPLE_RATE))
-                );
+                match best_config {
+                    None => best_config = Some(config_range),
+                    Some(ref current) => {
+                        // Prioritize F32 > I16 > I32 > others
+                        let score = |fmt: cpal::SampleFormat| match fmt {
+                            cpal::SampleFormat::F32 => 4,
+                            cpal::SampleFormat::I16 => 3,
+                            cpal::SampleFormat::I32 => 2,
+                            _ => 1,
+                        };
+
+                        if score(config_range.sample_format()) > score(current.sample_format()) {
+                            best_config = Some(config_range);
+                        }
+                    }
+                }
             }
+        }
+
+        if let Some(config) = best_config {
+            return Ok(config.with_sample_rate(cpal::SampleRate(constants::WHISPER_SAMPLE_RATE)));
         }
 
         // If no config supports 16kHz, fall back to default
@@ -245,7 +262,7 @@ fn run_consumer(
         in_sample_rate,
         WINDOW_SIZE,
         BUCKETS,
-        80.0,   // vocal_min_hz
+        400.0,  // vocal_min_hz
         4000.0, // vocal_max_hz
     );
 

@@ -122,10 +122,10 @@ impl ModelManager {
             ModelInfo {
                 id: "turbo".to_string(),
                 name: "Whisper Turbo".to_string(),
-                description: "Balanced accuracy and speed.".to_string(),
-                filename: "ggml-large-v3-turbo.bin".to_string(),
-                url: Some("https://blob.handy.computer/ggml-large-v3-turbo.bin".to_string()),
-                size_mb: 1600, // Approximate size
+                description: "Balanced accuracy and speed (q8_0 quantized).".to_string(),
+                filename: "ggml-large-v3-turbo-q8_0.bin".to_string(),
+                url: Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q8_0.bin".to_string()),
+                size_mb: 834, // Approximate size (q8_0 quantization)
                 is_downloaded: false,
                 is_downloading: false,
                 partial_size: 0,

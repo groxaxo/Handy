@@ -28,21 +28,25 @@ Handy now supports remote OpenAI-compatible API endpoints for speech-to-text tra
 ## Supported API Endpoints
 
 ### OpenAI
+
 - **API URL**: `https://api.openai.com/v1`
 - **Model Name**: `whisper-1`
 - **API Key**: Required (get from https://platform.openai.com/api-keys)
 
 ### Azure OpenAI
+
 - **API URL**: `https://<your-resource>.openai.azure.com/openai/deployments/<deployment-name>`
 - **Model Name**: Your deployment name
 - **API Key**: Required (get from Azure portal)
 
 ### LocalAI (Self-hosted)
+
 - **API URL**: `http://localhost:8080/v1` (or your LocalAI server URL)
 - **Model Name**: Name of your loaded Whisper model
 - **API Key**: Optional (depends on your configuration)
 
 ### Other Compatible APIs
+
 Any service that implements the OpenAI Whisper API specification should work.
 
 ## Using a Remote Model
@@ -55,7 +59,9 @@ Any service that implements the OpenAI Whisper API specification should work.
 ## Configuration Details
 
 ### API Request Format
+
 Remote models use the standard OpenAI Whisper API format:
+
 - **Endpoint**: `POST {API_URL}/audio/transcriptions`
 - **Method**: Multipart form data
 - **Fields**:
@@ -66,6 +72,7 @@ Remote models use the standard OpenAI Whisper API format:
   - `temperature`: `0.0`
 
 ### Security Notes
+
 - API keys are stored in the Tauri secure store
 - Keys are never logged or exposed in the UI after entry
 - Use HTTPS endpoints when possible to protect API keys in transit
@@ -74,12 +81,14 @@ Remote models use the standard OpenAI Whisper API format:
 ## Troubleshooting
 
 ### "Remote transcription failed" Error
+
 - Verify the API URL is correct and accessible
 - Check that your API key is valid
 - Ensure the model name matches an available model on the endpoint
 - Check your network connection and firewall settings
 
 ### Slow Transcription
+
 - Remote transcription speed depends on:
   - Network latency
   - API server response time
@@ -87,6 +96,7 @@ Remote models use the standard OpenAI Whisper API format:
 - Consider using local models for better performance if needed
 
 ### API Key Issues
+
 - Make sure there are no extra spaces in the API key
 - Verify the key has the correct permissions
 - Check if the key is expired or has reached usage limits
@@ -101,6 +111,7 @@ Remote models use the standard OpenAI Whisper API format:
 ## Examples
 
 ### Example: OpenAI Whisper
+
 ```
 Model ID: openai-whisper
 Display Name: OpenAI Whisper
@@ -111,6 +122,7 @@ Model Name: whisper-1
 ```
 
 ### Example: Self-hosted LocalAI
+
 ```
 Model ID: local-whisper
 Display Name: Local Whisper

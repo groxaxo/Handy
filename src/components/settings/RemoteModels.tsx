@@ -31,7 +31,9 @@ export const RemoteModels: React.FC<{
   });
   const [error, setError] = useState<string>("");
 
-  const remoteModels = models.filter((m: ModelInfo) => m.engine_type === "RemoteWhisper");
+  const remoteModels = models.filter(
+    (m: ModelInfo) => m.engine_type === "RemoteWhisper",
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,7 +46,7 @@ export const RemoteModels: React.FC<{
         formData.description,
         formData.api_url,
         formData.api_key || null,
-        formData.model_name
+        formData.model_name,
       );
 
       if (result.status === "error") {
@@ -121,7 +123,10 @@ export const RemoteModels: React.FC<{
             Add Remote Model
           </button>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-3 p-4 bg-gray-50 dark:bg-gray-800 rounded">
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-3 p-4 bg-gray-50 dark:bg-gray-800 rounded"
+          >
             <Input
               label="Model ID"
               placeholder="e.g., my-openai-api"
@@ -133,21 +138,27 @@ export const RemoteModels: React.FC<{
               label="Display Name"
               placeholder="e.g., OpenAI Whisper"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
               required
             />
             <Input
               label="Description"
               placeholder="e.g., OpenAI API transcription"
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, description: e.target.value })
+              }
               required
             />
             <Input
               label="API URL"
               placeholder="https://api.openai.com/v1"
               value={formData.api_url}
-              onChange={(e) => setFormData({ ...formData, api_url: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, api_url: e.target.value })
+              }
               required
             />
             <Input
@@ -155,18 +166,24 @@ export const RemoteModels: React.FC<{
               type="password"
               placeholder="sk-..."
               value={formData.api_key}
-              onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, api_key: e.target.value })
+              }
             />
             <Input
               label="Model Name"
               placeholder="whisper-1"
               value={formData.model_name}
-              onChange={(e) => setFormData({ ...formData, model_name: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, model_name: e.target.value })
+              }
               required
             />
 
             {error && (
-              <div className="text-sm text-red-600 dark:text-red-400">{error}</div>
+              <div className="text-sm text-red-600 dark:text-red-400">
+                {error}
+              </div>
             )}
 
             <div className="flex gap-2">

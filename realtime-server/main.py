@@ -8,7 +8,7 @@ app = FastAPI()
 
 # ---- Model config ----
 # Option A (simple): let faster-whisper auto-fetch its CT2 model by name
-MODEL_ID = "large-v3-turbo"
+MODEL_ID = "large-v3"
 
 # Option B (already-quantized int8_float32 CT2 repo)
 # MODEL_ID = "cstr/whisper-large-v3-turbo-int8_float32"
@@ -22,13 +22,15 @@ model = WhisperModel(MODEL_ID, device=DEVICE, compute_type=COMPUTE_TYPE)
 SAMPLE_RATE = 16000
 FRAME_MS = 20
 FRAME_SAMPLES = SAMPLE_RATE * FRAME_MS // 1000  # 320
-PARTIAL_EVERY_MS = 500         # how often we emit partials
-WINDOW_SECONDS = 6.0           # sliding window size for partial decoding
-MIN_FINAL_SECONDS = 1.0        # finalize at least this much speech
+PARTIAL_EVERY_MS = 500  # how often we emit partials
+WINDOW_SECONDS = 6.0  # sliding window size for partial decoding
+MIN_FINAL_SECONDS = 1.0  # finalize at least this much speech
+
 
 def _int16_bytes_to_float32_pcm(b: bytes) -> np.ndarray:
     pcm_i16 = np.frombuffer(b, dtype=np.int16)
     return pcm_i16.astype(np.float32) / 32768.0
+
 
 def _stable_prefix(prev: str, new: str) -> str:
     # cheap "stabilizer": keep the common prefix so UI doesn't jitter too much
@@ -39,6 +41,7 @@ def _stable_prefix(prev: str, new: str) -> str:
     # keep most of the stable prefix, allow some edits near the end
     keep = max(0, i - 8)
     return prev[:keep] + new[keep:]
+
 
 @app.websocket("/ws")
 async def ws_stt(ws: WebSocket):
@@ -68,12 +71,16 @@ async def ws_stt(ws: WebSocket):
             except Exception:
                 pass
         elif "bytes" in first and first["bytes"]:
-            buffer_pcm = np.concatenate([buffer_pcm, _int16_bytes_to_float32_pcm(first["bytes"])])
+            buffer_pcm = np.concatenate(
+                [buffer_pcm, _int16_bytes_to_float32_pcm(first["bytes"])]
+            )
 
         while True:
             msg = await ws.receive()
             if "bytes" in msg and msg["bytes"]:
-                buffer_pcm = np.concatenate([buffer_pcm, _int16_bytes_to_float32_pcm(msg["bytes"])])
+                buffer_pcm = np.concatenate(
+                    [buffer_pcm, _int16_bytes_to_float32_pcm(msg["bytes"])]
+                )
             elif "text" in msg and msg["text"]:
                 # allow control messages: {"type":"stop"}
                 try:
@@ -89,7 +96,11 @@ async def ws_stt(ws: WebSocket):
 
                 # sliding window decode (realtime-ish)
                 max_samples = int(WINDOW_SECONDS * SAMPLE_RATE)
-                window = buffer_pcm[-max_samples:] if buffer_pcm.shape[0] > max_samples else buffer_pcm
+                window = (
+                    buffer_pcm[-max_samples:]
+                    if buffer_pcm.shape[0] > max_samples
+                    else buffer_pcm
+                )
 
                 if window.shape[0] < int(0.4 * SAMPLE_RATE):
                     continue
@@ -109,10 +120,9 @@ async def ws_stt(ws: WebSocket):
                 stabilized = _stable_prefix(emitted_text, text)
                 emitted_text = stabilized
 
-                await ws.send_text(json.dumps({
-                    "type": "partial",
-                    "text": emitted_text
-                }))
+                await ws.send_text(
+                    json.dumps({"type": "partial", "text": emitted_text})
+                )
 
         # Finalize: decode full buffer once
         if buffer_pcm.shape[0] >= int(MIN_FINAL_SECONDS * SAMPLE_RATE):
@@ -132,3 +142,13 @@ async def ws_stt(ws: WebSocket):
 
     except WebSocketDisconnect:
         return
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

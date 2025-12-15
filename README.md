@@ -269,6 +269,51 @@ The goal is to create both a useful tool and a foundation for others to build up
   </a>
 </div>
 
+## Realtime Web Interface
+
+Handy includes a **retro 2000s messenger-style web interface** for real-time voice transcription:
+
+### Features
+- **🎙️ Real-time Voice Transcription** - Live speech-to-text with partial results
+- **📟 Retro Messenger UI** - Three themes: Classic Gray, Retro Green Terminal, Dark Mode
+- **🔄 Continuous Recording** - Automatic audio chunking and seamless transcription
+- **🌐 Browser Compatible** - Works on Chrome, Firefox, Safari, Edge
+- **📱 Mobile Responsive** - Optimized for phones and tablets
+
+### Quick Start
+
+1. **Start the realtime server:**
+   ```bash
+   cd realtime-server
+   pip install -r requirements.txt
+   python main.py --host 0.0.0.0 --port 8000
+   ```
+
+2. **Start the web interface:**
+   ```bash
+   cd realtime-web
+   npm install
+   npm run dev
+   ```
+
+3. **Deploy to Cloudflare Pages:**
+   ```bash
+   cd realtime-web
+   npm run build
+   # Upload contents of 'dist/' folder to Cloudflare Pages
+   ```
+
+4. **Access the interface:**
+   - Local: `http://localhost:3000`
+   - Deployed: Your Cloudflare Pages URL with WebSocket configuration
+
+### WebSocket Configuration
+
+The web interface connects to `ws://localhost:8000/ws` by default. For production deployment, update the WebSocket URL in `src/ui/Chatbox.tsx` or use URL parameter:
+```
+https://your-site.pages.dev/?ws=wss://your-server.com/ws
+```
+
 ## Related Projects
 
 - **[Handy CLI](https://github.com/cjpais/handy-cli)** - The original Python command-line version

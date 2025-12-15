@@ -27,15 +27,3 @@ dist-ssr
 /target/
 recording_*
 .crush/
-
-# Python
-realtime-server/.venv
-realtime-server/__pycache__
-realtime-server/*.pyc
-realtime-server/.pytest_cache
-realtime-server/.mypy_cache
-
-# Node.js (realtime-web)
-realtime-web/node_modules
-realtime-web/dist
-realtime-web/.vite

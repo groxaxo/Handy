@@ -293,6 +293,8 @@ pub struct AppSettings {
     pub append_trailing_space: bool,
     #[serde(default)]
     pub remote_models: HashMap<String, RemoteModelInfo>,
+    #[serde(default = "default_realtime_server_url")]
+    pub realtime_server_url: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
@@ -355,6 +357,10 @@ fn default_history_limit() -> usize {
 
 fn default_recording_retention_period() -> RecordingRetentionPeriod {
     RecordingRetentionPeriod::PreserveLimit
+}
+
+fn default_realtime_server_url() -> String {
+    "ws://127.0.0.1:8717/ws".to_string()
 }
 
 fn default_audio_feedback_volume() -> f32 {

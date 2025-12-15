@@ -250,5 +250,6 @@ export const useModels = () => {
     isModelDownloading,
     isModelExtracting,
     getDownloadProgress,
+    refreshModels: loadModels,
   };
 };

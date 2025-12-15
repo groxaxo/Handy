@@ -2,12 +2,14 @@ import React from "react";
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   variant?: "default" | "compact";
+  label?: string;
 }
 
 export const Input: React.FC<InputProps> = ({
   className = "",
   variant = "default",
   disabled,
+  label,
   ...props
 }) => {
   const baseClasses =
@@ -22,11 +24,24 @@ export const Input: React.FC<InputProps> = ({
     compact: "px-2 py-1",
   } as const;
 
-  return (
+  const inputElement = (
     <input
       className={`${baseClasses} ${variantClasses[variant]} ${interactiveClasses} ${className}`}
       disabled={disabled}
       {...props}
     />
   );
+
+  if (label) {
+    return (
+      <div className="flex flex-col gap-1">
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          {label}
+        </label>
+        {inputElement}
+      </div>
+    );
+  }
+
+  return inputElement;
 };

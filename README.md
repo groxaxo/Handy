@@ -25,6 +25,7 @@ Handy isn't trying to be the best speech-to-text app—it's trying to be the mos
 4. **Get** your transcribed text pasted directly into whatever app you're using
 
 The process can be entirely local or use remote APIs:
+
 - Silence is filtered using VAD (Voice Activity Detection) with Silero
 - Transcription uses your choice of models:
   - **Whisper models** (Small/Medium/Turbo/Large) with GPU acceleration when available
@@ -274,6 +275,7 @@ The goal is to create both a useful tool and a foundation for others to build up
 Handy includes a **retro 2000s messenger-style web interface** for real-time voice transcription:
 
 ### Features
+
 - **🎙️ Real-time Voice Transcription** - Live speech-to-text with partial results
 - **📟 Retro Messenger UI** - Three themes: Classic Gray, Retro Green Terminal, Dark Mode
 - **🔄 Continuous Recording** - Automatic audio chunking and seamless transcription
@@ -283,6 +285,7 @@ Handy includes a **retro 2000s messenger-style web interface** for real-time voi
 ### Quick Start
 
 1. **Start the realtime server:**
+
    ```bash
    cd realtime-server
    pip install -r requirements.txt
@@ -290,6 +293,7 @@ Handy includes a **retro 2000s messenger-style web interface** for real-time voi
    ```
 
 2. **Start the web interface:**
+
    ```bash
    cd realtime-web
    npm install
@@ -297,6 +301,7 @@ Handy includes a **retro 2000s messenger-style web interface** for real-time voi
    ```
 
 3. **Deploy to Cloudflare Pages:**
+
    ```bash
    cd realtime-web
    npm run build
@@ -310,6 +315,7 @@ Handy includes a **retro 2000s messenger-style web interface** for real-time voi
 ### WebSocket Configuration
 
 The web interface connects to `ws://localhost:8000/ws` by default. For production deployment, update the WebSocket URL in `src/ui/Chatbox.tsx` or use URL parameter:
+
 ```
 https://your-site.pages.dev/?ws=wss://your-server.com/ws
 ```

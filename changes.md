@@ -1,4 +1,4 @@
-I can’t access your GitHub session or fork/commit on your behalf from here — but I *can* give you the exact stack + new files to add + the specific Handy areas to edit so your fork becomes **Handy-style push-to-talk + realtime chunked transcription** using **Whisper large-v3-turbo** with **CTranslate2 `int8_float32`**. (The turbo model is the pruned large-v3 with a much smaller decoder for speed.) ([Hugging Face][1])
+I can’t access your GitHub session or fork/commit on your behalf from here — but I _can_ give you the exact stack + new files to add + the specific Handy areas to edit so your fork becomes **Handy-style push-to-talk + realtime chunked transcription** using **Whisper large-v3-turbo** with **CTranslate2 `int8_float32`**. (The turbo model is the pruned large-v3 with a much smaller decoder for speed.) ([Hugging Face][1])
 
 ## What you’re building
 
@@ -9,7 +9,7 @@ I can’t access your GitHub session or fork/commit on your behalf from here —
 3. **Handy fork integration**: keep Handy UX (hotkey, paste) but swap its “record then transcribe” step for “stream chunks live, then finalize + paste”.
 
 faster-whisper is explicitly built on CTranslate2 and auto-downloads CT2 Whisper models when you load by name. ([GitHub][2])
-For *pre-quantized* turbo int8_float32 you can also use an existing CT2 repo like `cstr/whisper-large-v3-turbo-int8_float32`. ([Hugging Face][3])
+For _pre-quantized_ turbo int8_float32 you can also use an existing CT2 repo like `cstr/whisper-large-v3-turbo-int8_float32`. ([Hugging Face][3])
 
 ---
 
@@ -228,8 +228,14 @@ Create: `realtime-web/` (Vite + React + TS)
 ```html
 <!doctype html>
 <html>
-  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-  <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
 ```
 
@@ -259,7 +265,11 @@ function floatTo16BitPCM(input: Float32Array) {
 }
 
 // very small resampler (good enough for speech)
-function downsampleBuffer(buffer: Float32Array, inRate: number, outRate: number) {
+function downsampleBuffer(
+  buffer: Float32Array,
+  inRate: number,
+  outRate: number,
+) {
   if (outRate === inRate) return buffer;
   const ratio = inRate / outRate;
   const newLen = Math.round(buffer.length / ratio);
@@ -267,7 +277,8 @@ function downsampleBuffer(buffer: Float32Array, inRate: number, outRate: number)
   let offset = 0;
   for (let i = 0; i < newLen; i++) {
     const next = Math.round((i + 1) * ratio);
-    let sum = 0, count = 0;
+    let sum = 0,
+      count = 0;
     for (; offset < next && offset < buffer.length; offset++) {
       sum += buffer[offset];
       count++;
@@ -310,7 +321,9 @@ export default function App() {
       ws.onerror = () => reject(new Error("ws connect failed"));
     });
 
-    ws.send(JSON.stringify({ language: null, task: "transcribe", beam_size: 1 }));
+    ws.send(
+      JSON.stringify({ language: null, task: "transcribe", beam_size: 1 }),
+    );
     wsRef.current = ws;
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -340,40 +353,78 @@ export default function App() {
   async function stop() {
     setRunning(false);
 
-    try { wsRef.current?.send(JSON.stringify({ type: "stop" })); } catch {}
-    try { wsRef.current?.close(); } catch {}
+    try {
+      wsRef.current?.send(JSON.stringify({ type: "stop" }));
+    } catch {}
+    try {
+      wsRef.current?.close();
+    } catch {}
     wsRef.current = null;
 
-    try { procRef.current?.disconnect(); } catch {}
-    try { audioCtxRef.current?.close(); } catch {}
+    try {
+      procRef.current?.disconnect();
+    } catch {}
+    try {
+      audioCtxRef.current?.close();
+    } catch {}
     procRef.current = null;
     audioCtxRef.current = null;
 
-    try { streamRef.current?.getTracks().forEach(t => t.stop()); } catch {}
+    try {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    } catch {}
     streamRef.current = null;
   }
 
   return (
-    <div style={{ fontFamily: "ui-sans-serif, system-ui", padding: 24, maxWidth: 900 }}>
+    <div
+      style={{
+        fontFamily: "ui-sans-serif, system-ui",
+        padding: 24,
+        maxWidth: 900,
+      }}
+    >
       <h1 style={{ margin: 0 }}>Handy-style Realtime Whisper (chunked)</h1>
       <p style={{ opacity: 0.75 }}>Server: {WS_URL}</p>
 
       <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
         {!running ? (
-          <button onClick={start} style={{ padding: "10px 14px" }}>Start</button>
+          <button onClick={start} style={{ padding: "10px 14px" }}>
+            Start
+          </button>
         ) : (
-          <button onClick={stop} style={{ padding: "10px 14px" }}>Stop</button>
+          <button onClick={stop} style={{ padding: "10px 14px" }}>
+            Stop
+          </button>
         )}
       </div>
 
-      <div style={{ marginTop: 18, padding: 16, border: "1px solid #ddd", borderRadius: 10 }}>
+      <div
+        style={{
+          marginTop: 18,
+          padding: 16,
+          border: "1px solid #ddd",
+          borderRadius: 10,
+        }}
+      >
         <div style={{ fontSize: 12, opacity: 0.6 }}>Partial</div>
-        <div style={{ fontSize: 20, whiteSpace: "pre-wrap" }}>{partial || "…"}</div>
+        <div style={{ fontSize: 20, whiteSpace: "pre-wrap" }}>
+          {partial || "…"}
+        </div>
       </div>
 
-      <div style={{ marginTop: 18, padding: 16, border: "1px solid #ddd", borderRadius: 10 }}>
+      <div
+        style={{
+          marginTop: 18,
+          padding: 16,
+          border: "1px solid #ddd",
+          borderRadius: 10,
+        }}
+      >
         <div style={{ fontSize: 12, opacity: 0.6 }}>Final</div>
-        <div style={{ fontSize: 20, whiteSpace: "pre-wrap" }}>{finalText || "—"}</div>
+        <div style={{ fontSize: 20, whiteSpace: "pre-wrap" }}>
+          {finalText || "—"}
+        </div>
       </div>
     </div>
   );
@@ -492,40 +543,40 @@ bytemuck = "1"
 
 Then wire it into the existing “record lifecycle”:
 
-* On hotkey press: `RealtimeClient::connect(...)`
-* During capture callback: buffer → resample to **16k mono** → `send_pcm16()`
-* Spawn a task that loops `next_msg()` and emits Tauri events:
+- On hotkey press: `RealtimeClient::connect(...)`
+- During capture callback: buffer → resample to **16k mono** → `send_pcm16()`
+- Spawn a task that loops `next_msg()` and emits Tauri events:
+  - `handy://stt/partial`
+  - `handy://stt/final`
 
-  * `handy://stt/partial`
-  * `handy://stt/final`
-* On hotkey release: `client.stop()`, wait for `final`, then paste.
+- On hotkey release: `client.stop()`, wait for `final`, then paste.
 
 ### B) In Handy’s React UI
 
 Find the settings screen where engines/models are chosen (search `Settings`, `Engine`, `Model`).
 Add:
 
-* Engine option: **Realtime (Whisper large-v3-turbo, chunked)**
-* Server URL setting (default `ws://127.0.0.1:8717/ws`)
-* A live preview panel that subscribes to the Tauri events and shows partial/final.
+- Engine option: **Realtime (Whisper large-v3-turbo, chunked)**
+- Server URL setting (default `ws://127.0.0.1:8717/ws`)
+- A live preview panel that subscribes to the Tauri events and shows partial/final.
 
 ---
 
 ## Notes on your exact model + quantization requirement
 
-* The canonical model id is `openai/whisper-large-v3-turbo`. ([Hugging Face][1])
-* The “turbo” release info (smaller decoder for speed) is documented by OpenAI in the Whisper repo discussions. ([GitHub][4])
-* If you want to **force `int8_float32`** with minimum fuss, using a pre-quantized CT2 repo like `cstr/whisper-large-v3-turbo-int8_float32` is straightforward. ([Hugging Face][3])
+- The canonical model id is `openai/whisper-large-v3-turbo`. ([Hugging Face][1])
+- The “turbo” release info (smaller decoder for speed) is documented by OpenAI in the Whisper repo discussions. ([GitHub][4])
+- If you want to **force `int8_float32`** with minimum fuss, using a pre-quantized CT2 repo like `cstr/whisper-large-v3-turbo-int8_float32` is straightforward. ([Hugging Face][3])
 
 ---
 
-## What I still need from you (only if you want *exact* file-by-file patches)
+## What I still need from you (only if you want _exact_ file-by-file patches)
 
 If you paste **just**:
 
-* `src-tauri/Cargo.toml`
-* the Rust file where recording starts/stops (the one hit by `rg "start.*record|begin.*record"`),
-* the file where Whisper/Parakeet engines are selected,
+- `src-tauri/Cargo.toml`
+- the Rust file where recording starts/stops (the one hit by `rg "start.*record|begin.*record"`),
+- the file where Whisper/Parakeet engines are selected,
 
 …I’ll reply with **a clean unified diff** that applies directly to your fork (no guessing).
 

@@ -13,6 +13,7 @@ This implementation adds the ability to use remote OpenAI-compatible transcripti
 #### 1. Model Configuration (`src-tauri/src/managers/model.rs`)
 
 **New Types:**
+
 ```rust
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RemoteModelConfig {
@@ -30,10 +31,12 @@ pub enum EngineType {
 ```
 
 **ModelInfo Updates:**
+
 - Added `remote_config: Option<RemoteModelConfig>` field
 - All existing models updated to include `remote_config: None`
 
 **New Methods:**
+
 - `add_remote_model()`: Adds a remote model configuration and persists to settings
 - `remove_remote_model()`: Removes a remote model configuration
 - `load_remote_models_from_settings()`: Loads remote models on app startup
@@ -43,6 +46,7 @@ pub enum EngineType {
 **New Module:** Handles communication with OpenAI-compatible APIs
 
 **Key Function:**
+
 ```rust
 pub async fn transcribe_remote(
     audio_data: Vec<f32>,
@@ -53,6 +57,7 @@ pub async fn transcribe_remote(
 ```
 
 **Features:**
+
 - Converts f32 samples to WAV format
 - Sends multipart/form-data request to API endpoint
 - Handles authentication via Bearer token
@@ -61,6 +66,7 @@ pub async fn transcribe_remote(
 #### 3. Transcription Manager (`src-tauri/src/managers/transcription.rs`)
 
 **LoadedEngine Updates:**
+
 ```rust
 enum LoadedEngine {
     Whisper(WhisperEngine),
@@ -70,6 +76,7 @@ enum LoadedEngine {
 ```
 
 **Key Changes:**
+
 - `load_model()`: Updated to handle `RemoteWhisper` type
 - `unload_model()`: Updated to skip cleanup for remote models
 - `transcribe()`: Added async runtime for remote transcription
@@ -78,6 +85,7 @@ enum LoadedEngine {
 #### 4. Settings (`src-tauri/src/settings.rs`)
 
 **New Types:**
+
 ```rust
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RemoteModelInfo {
@@ -88,15 +96,18 @@ pub struct RemoteModelInfo {
 ```
 
 **AppSettings Updates:**
+
 - Added `remote_models: HashMap<String, RemoteModelInfo>` field
 
 #### 5. Commands (`src-tauri/src/commands/models.rs`)
 
 **New Commands:**
+
 - `add_remote_model`: Adds a new remote model configuration
 - `remove_remote_model`: Removes an existing remote model
 
 **Updated Commands:**
+
 - `set_active_model`: Modified to handle remote models (no download check)
 
 ### Frontend (TypeScript/React)
@@ -104,6 +115,7 @@ pub struct RemoteModelInfo {
 #### 1. Type Definitions (`src/lib/types.ts`)
 
 **New Schemas:**
+
 ```typescript
 export const RemoteModelConfigSchema = z.object({
   api_url: z.string(),
@@ -111,7 +123,11 @@ export const RemoteModelConfigSchema = z.object({
   model_name: z.string(),
 });
 
-export const EngineTypeSchema = z.enum(["Whisper", "Parakeet", "RemoteWhisper"]);
+export const EngineTypeSchema = z.enum([
+  "Whisper",
+  "Parakeet",
+  "RemoteWhisper",
+]);
 
 export const RemoteModelInfoSchema = z.object({
   name: z.string(),
@@ -121,12 +137,14 @@ export const RemoteModelInfoSchema = z.object({
 ```
 
 **Updated Schemas:**
+
 - `ModelInfoSchema`: Added `engine_type` and `remote_config` fields
 - `SettingsSchema`: Added `remote_models` field
 
 #### 2. UI Component (`src/components/settings/RemoteModels.tsx`)
 
 **Features:**
+
 - Form for adding new remote models
 - List view of configured remote models
 - Remove functionality
@@ -134,6 +152,7 @@ export const RemoteModelInfoSchema = z.object({
 - Error handling
 
 **Form Fields:**
+
 - Model ID (unique identifier)
 - Display Name
 - Description
@@ -218,6 +237,7 @@ Potential improvements for future iterations:
 ## Dependencies
 
 **New Rust Dependencies:**
+
 - Uses existing `reqwest` for HTTP requests
 - Uses existing `hound` for WAV conversion
 - Uses existing `tokio` for async runtime
@@ -227,6 +247,7 @@ Potential improvements for future iterations:
 ## Files Modified
 
 ### Backend
+
 - `src-tauri/src/managers/model.rs` - Model configuration
 - `src-tauri/src/managers/transcription.rs` - Transcription logic
 - `src-tauri/src/managers/remote_transcription.rs` - New file
@@ -236,11 +257,13 @@ Potential improvements for future iterations:
 - `src-tauri/src/lib.rs` - Command registration
 
 ### Frontend
+
 - `src/lib/types.ts` - Type definitions
 - `src/components/settings/RemoteModels.tsx` - New file
 - `src/components/settings/AdvancedSettings.tsx` - Component integration
 
 ### Documentation
+
 - `docs/REMOTE_MODELS.md` - New file
 - `README.md` - Updated overview
 

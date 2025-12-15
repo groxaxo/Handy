@@ -19,6 +19,7 @@ pub enum EngineType {
     Whisper,
     Parakeet,
     RemoteWhisper,
+    RealtimeWhisperTurbo,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -195,6 +196,27 @@ impl ModelManager {
                 remote_config: None,
                 accuracy_score: 0.80,
                 speed_score: 0.85,
+            },
+        );
+
+        // Add Realtime Whisper Turbo (uses external server)
+        available_models.insert(
+            "realtime-whisper-turbo".to_string(),
+            ModelInfo {
+                id: "realtime-whisper-turbo".to_string(),
+                name: "Realtime Whisper Turbo".to_string(),
+                description: "Real-time chunked transcription with Whisper large-v3-turbo (requires external server)".to_string(),
+                filename: String::new(),
+                url: None,
+                size_mb: 0,
+                is_downloaded: true, // Server-based, always "available"
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: false,
+                engine_type: EngineType::RealtimeWhisperTurbo,
+                remote_config: None,
+                accuracy_score: 0.85,
+                speed_score: 0.95, // Very fast due to realtime chunked processing
             },
         );
 

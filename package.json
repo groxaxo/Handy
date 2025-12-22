@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "setup": "bash scripts/setup.sh",
+    "docker:build": "docker build -t handy-builder . && docker run --rm -v $(pwd):/app -v /app/node_modules -v handy-cargo-cache:/usr/local/cargo/registry handy-builder",
     "format": "prettier --write . && cd src-tauri && cargo fmt",
     "format:check": "prettier --check . && cd src-tauri && cargo fmt -- --check",
     "format:frontend": "prettier --write .",

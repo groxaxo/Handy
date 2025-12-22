@@ -53,6 +53,16 @@ npm run setup
 
 For more details, see [BUILD.md](BUILD.md).
 
+### Docker Build
+
+If you prefer not to install system dependencies on your host, you can build the Linux artifacts using Docker:
+
+```bash
+npm run docker:build
+```
+
+The artifacts (`.deb`, `.AppImage`) will be available in `src-tauri/target/release/bundle/`.
+
 ### Development Setup
 
 For detailed build instructions including platform-specific requirements, see [BUILD.md](BUILD.md).

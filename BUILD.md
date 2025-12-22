@@ -44,23 +44,46 @@ This guide covers how to set up the development environment and build Handy from
     gtk3 webkit2gtk-4.1 libappindicator-gtk3 librsvg
   ```
 
+## Environment Setup
+
+Handy requires several system-level dependencies for audio processing and GUI rendering on Linux. We provide an automated setup script to check for these dependencies.
+
+```bash
+# Using npm
+npm run setup
+
+# Or using bun
+bun run setup
+
+# Or directly
+bash scripts/setup.sh
+```
+
 ## Setup Instructions
 
 ### 1. Clone the Repository
 
 ```bash
-git clone git@github.com:cjpais/Handy.git
+git clone https://github.com/groxaxo/Handy.git
 cd Handy
 ```
 
-### 2. Install Dependencies
+### 2. Run Setup
+
+This will check for required package managers (Bun/NPM), Rust, and system libraries.
 
 ```bash
-bun install
+npm run setup
 ```
 
-### 3. Start Dev Server
+### 3. Install Dependencies
 
 ```bash
-bun tauri dev
+npm install # or bun install
+```
+
+### 4. Start Dev Server
+
+```bash
+npm run tauri dev # or bun tauri dev
 ```

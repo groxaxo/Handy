@@ -45,14 +45,13 @@ The process can be entirely local or use remote APIs:
 
 ### Setup and Troubleshooting
 
-If you encounter issues during installation or build, please refer to:
-- [discrepancies.md](discrepancies.md) - Log of known environment issues and workarounds.
-- [scripts/setup-env.sh](scripts/setup-env.sh) - A script to automate dependency checks and installation.
+If you encounter issues during installation or build, run the integrated setup script to check your environment:
 
-Run the setup script:
 ```bash
-bash scripts/setup-env.sh
+npm run setup
 ```
+
+For more details, see [BUILD.md](BUILD.md).
 
 ### Development Setup
 

@@ -1,6 +1,4 @@
-#!/bin/bash
-
-# setup-env.sh: Automate environment setup for Handy
+# setup.sh: Automate environment setup for Handy
 
 set -e
 

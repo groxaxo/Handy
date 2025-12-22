@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     libvulkan-dev \
     vulkan-tools \
-    shaderc \
+    glslc \
     libgtk-3-dev \
     libwebkit2gtk-4.1-dev \
     libayatana-appindicator3-dev \

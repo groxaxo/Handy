@@ -1,0 +1,19 @@
+services:
+  handy:
+    build: .
+    image: handy-cpu-app
+    container_name: handy-app
+    environment:
+      - DISPLAY=:99
+      - WEBKIT_DISABLE_COMPOSITING_MODE=1
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - handy-cargo-cache:/usr/local/cargo/registry
+    cap_add:
+      - SYS_ADMIN # Required for some sandbox features in WebKit/Tauri
+    security_opt:
+      - seccomp:unconfined # Might be needed for some sandboxed features
+
+volumes:
+  handy-cargo-cache:

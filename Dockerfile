@@ -1,10 +1,7 @@
-# Dockerfile for building Handy on Linux
-# usage: docker build -t handy-builder .
-# usage: docker run -v $(pwd):/app handy-builder npm run tauri build
-
+# Dockerfile for building and launching Handy on Linux (Headless/CPU)
 FROM node:20-bookworm
 
-# Avoid interactive prompts during package installation
+# Avoid interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install Rust toolchain
@@ -15,8 +12,7 @@ ENV RUSTUP_HOME=/usr/local/rustup \
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable \
     && chmod -R a+w $RUSTUP_HOME $CARGO_HOME
 
-# Install System Dependencies
-# Matches the list in scripts/setup.sh + standard build tools
+# Install System Dependencies (Build + Runtime + Headless)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libasound2-dev \
@@ -33,19 +29,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
     file \
+    xvfb \
+    xauth \
+    libnss3 \
+    libxtst6 \
+    libxss1 \
+    libxrandr2 \
+    libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Copy package files first for caching
 COPY package*.json ./
-
-# Install frontend dependencies
 RUN npm install
 
 # Copy the rest of the application
 COPY . .
 
-# Default command: build the app
-# Output will be in src-tauri/target/release/bundle/deb/ and /appimage/
-CMD ["npm", "run", "tauri", "build"]
+# Set environment variables for CPU-only and Headless execution
+ENV DISPLAY=:99
+ENV WEBKIT_DISABLE_COMPOSITING_MODE=1
+
+# Expose port 1420 for Vite (if needed)
+EXPOSE 1420
+
+# Command to build and then launch headlessly for verification
+# We use xvfb-run to provide a virtual display
+CMD ["bash", "-c", "npm run tauri build -- --debug && xvfb-run -a npm run tauri dev"]

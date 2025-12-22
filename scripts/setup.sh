@@ -48,6 +48,8 @@ if command -v apt-get >/dev/null 2>&1; then
         "libssl-dev"
         "libvulkan-dev"
         "vulkan-tools"
+        "shaderc"
+        "glslc"
         "libgtk-3-dev"
         "libwebkit2gtk-4.1-dev"
         "libayatana-appindicator3-dev"

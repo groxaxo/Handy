@@ -13,6 +13,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --de
     && chmod -R a+w $RUSTUP_HOME $CARGO_HOME
 
 # Install System Dependencies (Build + Runtime + Headless)
+# Matches the list in scripts/setup.sh + standard build tools + bindgen requirements
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libasound2-dev \
@@ -36,6 +37,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxss1 \
     libxrandr2 \
     libasound2 \
+    libclang-dev \
+    clang \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

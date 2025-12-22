@@ -43,6 +43,17 @@ The process can be entirely local or use remote APIs:
 4. Configure your preferred keyboard shortcuts in Settings
 5. Start transcribing!
 
+### Setup and Troubleshooting
+
+If you encounter issues during installation or build, please refer to:
+- [discrepancies.md](discrepancies.md) - Log of known environment issues and workarounds.
+- [scripts/setup-env.sh](scripts/setup-env.sh) - A script to automate dependency checks and installation.
+
+Run the setup script:
+```bash
+bash scripts/setup-env.sh
+```
+
 ### Development Setup
 
 For detailed build instructions including platform-specific requirements, see [BUILD.md](BUILD.md).
@@ -299,6 +310,9 @@ Handy includes a **retro 2000s messenger-style web interface** for real-time voi
    npm install
    npm run dev
    ```
+
+> [!NOTE]
+> If `bun` is not available, `npm` can be used as a fallback for frontend commands.
 
 3. **Deploy to Cloudflare Pages:**
 
